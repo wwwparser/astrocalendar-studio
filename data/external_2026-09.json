@@ -1,0 +1,210 @@
+{
+  "_comment": "Независимый внешний календарь на сентябрь 2026 для проверки НА ПРОПУСКИ: что есть у других и чего нет у нас. Источник: in-the-sky.org (Dominic Ford), выборка событий месяца. Даты там даны по UTC — при сверке допускается сдвиг до суток. Это не источник истины для значений, только контроль полноты.",
+  "source": "in-the-sky.org — Astronomical events September 2026 (UTC)",
+  "fetched": "2026-09-01",
+  "items": [
+    {
+      "external": "Last Quarter — 4 September",
+      "keywords": [
+        "последней четверти"
+      ],
+      "day": 4
+    },
+    {
+      "external": "New Moon — 10–11 September",
+      "keywords": [
+        "новолуние"
+      ],
+      "day": 11
+    },
+    {
+      "external": "First Quarter — 18 September",
+      "keywords": [
+        "первой четверти"
+      ],
+      "day": 19
+    },
+    {
+      "external": "Full Moon — 26 September",
+      "keywords": [
+        "полнолуние"
+      ],
+      "day": 26
+    },
+    {
+      "external": "Moon at perigee — 6 September",
+      "keywords": [
+        "перигее"
+      ],
+      "day": 7
+    },
+    {
+      "external": "Moon at apogee — 18–19 September",
+      "keywords": [
+        "апогее"
+      ],
+      "day": 19
+    },
+    {
+      "external": "Moon–M45 — 3 September",
+      "keywords": [
+        "альциона"
+      ],
+      "day": 3
+    },
+    {
+      "external": "Moon–M45 — 30 September",
+      "keywords": [
+        "альциона"
+      ],
+      "day": 30
+    },
+    {
+      "external": "Moon–Mars — 6 September",
+      "keywords": [
+        "марса"
+      ],
+      "day": 6
+    },
+    {
+      "external": "Moon–M44 and Jupiter — 8 September",
+      "keywords": [
+        "m44"
+      ],
+      "day": 8
+    },
+    {
+      "external": "Moon–Mercury — 12 September",
+      "keywords": [
+        "меркурия"
+      ],
+      "day": 12
+    },
+    {
+      "external": "Moon–Venus — 14 September",
+      "keywords": [
+        "венеры"
+      ],
+      "day": 14
+    },
+    {
+      "external": "Moon–Saturn — 27 September",
+      "keywords": [
+        "сатурна"
+      ],
+      "day": 27
+    },
+    {
+      "external": "Lunar occultation of beta Tauri — 4–5 September",
+      "keywords": [
+        "эльнат"
+      ],
+      "day": 4,
+      "expected_missing": "событие найдено расчётом (05.09 05:36 МСК, геоцентрическое расстояние 0,541°), но полоса покрытия не проходит над Россией"
+    },
+    {
+      "external": "Lunar occultation of Jupiter — 8 September",
+      "keywords": [
+        "покрытие юпитера"
+      ],
+      "day": 8
+    },
+    {
+      "external": "Lunar occultation of Venus — 14 September",
+      "keywords": [
+        "покрытие венеры"
+      ],
+      "day": 14
+    },
+    {
+      "external": "Lunar occultation of Antares — 17 September",
+      "keywords": [
+        "антарес"
+      ],
+      "day": 17,
+      "expected_missing": "найдено расчётом (17.09 15:53 МСК, 0,570°), полоса над Россией не проходит"
+    },
+    {
+      "external": "Lunar occultation of sigma Sagittarii — 20 September",
+      "keywords": [
+        "нунки"
+      ],
+      "day": 20,
+      "expected_missing": "найдено расчётом (20.09 09:45 МСК, 0,363°), полоса над Россией не проходит"
+    },
+    {
+      "external": "Venus at greatest brightness — 22 September",
+      "keywords": [
+        "максимальном блеске"
+      ],
+      "day": 24
+    },
+    {
+      "external": "Neptune at opposition — 25–26 September",
+      "keywords": [
+        "нептун",
+        "противостоянии"
+      ],
+      "day": 26
+    },
+    {
+      "external": "Uranus enters retrograde — 10 September",
+      "keywords": [
+        "уран"
+      ],
+      "day": 10
+    },
+    {
+      "external": "Aurigid meteor shower — 1 September",
+      "keywords": [
+        "ауригиды"
+      ],
+      "day": 1
+    },
+    {
+      "external": "September epsilon-Perseids — 9 September",
+      "keywords": [
+        "эпсилон-персеиды"
+      ],
+      "day": 9
+    },
+    {
+      "external": "Daytime Sextantids — 27 September",
+      "keywords": [
+        "секстантиды"
+      ],
+      "day": 30
+    },
+    {
+      "external": "September equinox — 22–23 September",
+      "keywords": [
+        "равноденствие"
+      ],
+      "day": 23
+    },
+    {
+      "external": "Mercury at aphelion — 27 September",
+      "keywords": [
+        "афелии"
+      ],
+      "day": 27,
+      "expected_missing": "гелиоцентрические вехи планет календарь не публикует"
+    },
+    {
+      "external": "Moon at perihelion — 13 September",
+      "keywords": [
+        "перигелии"
+      ],
+      "day": 13,
+      "expected_missing": "гелиоцентрические вехи Луны календарь не публикует"
+    },
+    {
+      "external": "Moon at aphelion — 23 September",
+      "keywords": [
+        "афелии луны"
+      ],
+      "day": 23,
+      "expected_missing": "то же"
+    }
+  ]
+}

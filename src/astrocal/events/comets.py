@@ -1,0 +1,305 @@
+"""Кометы: отбор ярких, трассировка по небу и автопоиск сближений.
+
+Порядок работы:
+1. орбитальные элементы MPC (CometEls.txt) → тела Skyfield;
+2. грубая сетка по месяцу → оценка блеска m = g + 5·lg Δ + k·lg r → отбор ярче 12m;
+3. частая сетка (15 мин) для отобранных → RA/Dec;
+4. кросс-матч с Hipparcos и OpenNGC → локальные минимумы углового расстояния;
+5. одно сближение = одна строка (момент минимума), а не 20 почти одинаковых.
+"""
+from __future__ import annotations
+
+import datetime as dt
+
+import numpy as np
+import pandas as pd
+from skyfield.constants import GM_SUN_Pitjeva_2005_km3_s2 as GM_SUN
+from skyfield.data import mpc
+
+from .. import config as cfg
+from ..catalogs import STAR_NAMES_RU, angular_distance_deg, bright_stars, deep_sky
+from ..core import (Event, body, constellation_at, earth, local_minima, observer,
+                    refine_minimum, southern_observer, timescale, to_msk, ts_range)
+from ..fmt import angle_deg, ru_constellation
+
+COMET_ELS = cfg.CACHE / "CometEls.txt"
+
+# Кометы, которые ведём независимо от формального порога блеска
+# (интересная геометрия прохода по небу в этом месяце)
+WATCHLIST = ("161P",)
+
+
+def load_elements() -> pd.DataFrame:
+    if not COMET_ELS.exists():
+        from skyfield.api import load
+        with load.open(mpc.COMET_URL, filename=str(COMET_ELS)) as f:
+            return mpc.load_comets_dataframe(f)
+    with COMET_ELS.open("rb") as f:
+        return mpc.load_comets_dataframe(f)
+
+
+def _orbit(row):
+    return body("sun") + mpc.comet_orbit(row, timescale(), GM_SUN)
+
+
+def estimate_magnitude(row, r_au, delta_au) -> np.ndarray:
+    """m = g + 5·lg Δ + k·lg r (обозначения MPC: g = magnitude_g, k = magnitude_k)."""
+    g = row["magnitude_g"]
+    k = row["magnitude_k"]
+    if not np.isfinite(g):
+        return np.full_like(np.asarray(delta_au, dtype=float), 99.0)
+    k = 10.0 if not np.isfinite(k) else k
+    return g + 5.0 * np.log10(delta_au) + k * np.log10(r_au)
+
+
+def select_bright(start: dt.datetime, end: dt.datetime,
+                  mag_limit: float = None) -> pd.DataFrame:
+    """Кометы, которые в течение месяца бывают ярче mag_limit."""
+    limit = cfg.COMET_MAG_LIMIT if mag_limit is None else mag_limit
+    df = load_elements()
+    grid = ts_range(start, end, 24 * 60 * 5)   # раз в 5 суток — этого хватает для отбора
+    sun, e = body("sun"), earth()
+    rows = []
+    for _, row in df.iterrows():
+        if not np.isfinite(row.get("magnitude_g", np.nan)):
+            continue
+        try:
+            comet = _orbit(row)
+            astro = e.at(grid).observe(comet)
+            delta = astro.distance().au
+            r = sun.at(grid).observe(comet).distance().au
+        except Exception:
+            continue
+        m = estimate_magnitude(row, r, delta)
+        if np.nanmin(m) <= limit:
+            rows.append({"designation": row["designation"],
+                         "mag_min": float(np.nanmin(m)),
+                         "row": row})
+    return pd.DataFrame(rows).sort_values("mag_min").reset_index(drop=True)
+
+
+def comet_name(designation: str) -> str:
+    """'161P/Hartley-IRAS' из записи MPC."""
+    return designation.split("(")[0].strip().rstrip(")").strip()
+
+
+def _fmt_mag(m: float) -> str:
+    return f"V={m:+.1f}m".replace(".", ",")
+
+
+def track(row, start: dt.datetime, end: dt.datetime, step_minutes: int = None):
+    """RA/Dec/блеск кометы на частой сетке."""
+    step = cfg.COMET_STEP_MINUTES if step_minutes is None else step_minutes
+    grid = ts_range(start, end, step)
+    comet = _orbit(row)
+    astro = earth().at(grid).observe(comet)
+    ra, dec, distance = astro.radec()
+    r = body("sun").at(grid).observe(comet).distance().au
+    mag = estimate_magnitude(row, r, distance.au)
+    return grid, ra.degrees, dec.degrees, mag, comet
+
+
+def _nearby(catalog: pd.DataFrame, ra_track, dec_track, pad_deg: float = 2.0):
+    """Грубый отбор объектов каталога вблизи трека (прямоугольник + запас)."""
+    dec_lo, dec_hi = dec_track.min() - pad_deg, dec_track.max() + pad_deg
+    sel = catalog[(catalog.dec_degrees >= dec_lo) & (catalog.dec_degrees <= dec_hi)]
+    if sel.empty:
+        return sel
+    ra_min, ra_max = ra_track.min(), ra_track.max()
+    if ra_max - ra_min > 180:      # трек пересекает 0h
+        return sel
+    scale = np.cos(np.radians(np.clip((dec_lo + dec_hi) / 2, -89, 89)))
+    pad_ra = pad_deg / max(scale, 0.05)
+    return sel[(sel.ra_degrees >= ra_min - pad_ra) & (sel.ra_degrees <= ra_max + pad_ra)]
+
+
+def _direction_from_offsets(d_ra_cos: float, d_dec: float) -> str:
+    if abs(d_ra_cos) >= abs(d_dec):
+        return "восточнее" if d_ra_cos > 0 else "западнее"
+    return "севернее" if d_dec > 0 else "южнее"
+
+
+def observability(grid, comet):
+    """Высоты кометы и Солнца + маска моментов, когда объект виден из России.
+
+    Проверяем две площадки — Москву и юг Европейской части: объекты со
+    склонением ниже −20° из Москвы не поднимаются, но с юга наблюдаются
+    нормально, и терять их календарю незачем.
+    """
+    best_alt = None
+    best_sun = None
+    mask = None
+    for site in (observer(), southern_observer()):
+        alt = site.at(grid).observe(comet).apparent().altaz()[0].degrees
+        sun_alt = site.at(grid).observe(body("sun")).apparent().altaz()[0].degrees
+        good = (alt > 10.0) & (sun_alt < -12.0)
+        if best_alt is None:
+            best_alt, best_sun, mask = alt, sun_alt, good
+        else:
+            better = alt > best_alt
+            best_alt = np.where(better, alt, best_alt)
+            best_sun = np.where(better, sun_alt, best_sun)
+            mask = mask | good
+    return best_alt, best_sun, mask
+
+
+def _approach_events(row, grid, ra, dec, mag, catalog, kind: str,
+                     limit_deg: float, describe, obs=None) -> list[Event]:
+    """Локальные минимумы расстояния комета–объект каталога.
+
+    Момент наибольшего сближения часто приходится на светлое время или на период,
+    когда объект под горизонтом. В календарь в этом случае ставим ближайший
+    момент, когда картинку реально видно из Москвы и сближение ещё в силе, —
+    так же поступают печатные календари.
+    """
+    out: list[Event] = []
+    sel = _nearby(catalog, ra, dec)
+    name = comet_name(row["designation"])
+    comet = _orbit(row)
+    ts = timescale()
+    grid_tt = grid.tt
+    alt_v, sun_v, obs_mask = obs if obs is not None else observability(grid, comet)
+
+    for _, obj in sel.iterrows():
+        d = angular_distance_deg(ra, dec, obj.ra_degrees, obj.dec_degrees)
+        if d.min() > limit_deg:
+            continue
+        for i in local_minima(grid, d):
+            if d[i] > limit_deg:
+                continue
+
+            def dist_at(tt, obj=obj):
+                p = earth().at(ts.tt_jd(tt)).observe(comet)
+                r_, dc_, _ = p.radec()
+                return float(angular_distance_deg(r_.degrees, dc_.degrees,
+                                                  obj.ra_degrees, obj.dec_degrees))
+
+            tt_min = refine_minimum(dist_at, grid[max(i - 1, 0)].tt,
+                                    grid[min(i + 1, len(grid) - 1)].tt)
+            sep_min = dist_at(tt_min)
+
+            # ближайший наблюдаемый узел сетки, где сближение ещё в пределах порога
+            candidates = np.where(obs_mask & (d <= limit_deg))[0]
+            visible = len(candidates) > 0
+            if visible:
+                j = int(candidates[np.argmin(np.abs(candidates - i))])
+                if abs(j - i) * cfg.COMET_STEP_MINUTES > 14 * 60:
+                    visible = False
+            if visible:
+                t = grid[j]
+                sep = float(d[j])
+                alt, sun_alt = float(alt_v[j]), float(sun_v[j])
+            else:
+                t = ts.tt_jd(tt_min)
+                sep = sep_min
+                alt = float(np.interp(tt_min, grid_tt, alt_v))
+                sun_alt = float(np.interp(tt_min, grid_tt, sun_v))
+
+            when = to_msk(t)
+            p = earth().at(t).observe(comet)
+            c_ra, c_dec, _ = p.radec()
+            d_dec = float(c_dec.degrees) - obj.dec_degrees
+            d_ra = ((float(c_ra.degrees) - obj.ra_degrees + 180) % 360 - 180) *                 np.cos(np.radians(obj.dec_degrees))
+            const = ru_constellation(constellation_at()(
+                earth().at(t).observe(comet).apparent()))
+            out.append(Event(
+                when=when,
+                text=(f"Комета {name} ({_fmt_mag(float(np.interp(t.tt, grid_tt, mag)))}) "
+                      f"проходит в {angle_deg(sep)} "
+                      f"{_direction_from_offsets(d_ra, d_dec)} {describe(obj)} "
+                      f"в созвездии {const}"),
+                category=f"comet_{kind}",
+                confidence="средняя",
+                computed=(f"минимум расстояния {sep_min * 60:.1f}′ в "
+                          f"{to_msk(ts.tt_jd(tt_min)):%d.%m %H:%M} МСК; в календаре "
+                          f"момент наблюдаемости, разделение {sep * 60:.1f}′; "
+                          f"наибольшая высота кометы (Москва/юг ЕЧР) {alt:.0f}°, Солнце {sun_alt:.0f}°"),
+                sources=["MPC CometEls.txt (элементы)", "Hipparcos / OpenNGC",
+                         "Skyfield/DE440s"],
+                precision="hour",
+                notes=("наблюдаемо из России" if visible
+                       else "из России в эти сутки не наблюдается"),
+                meta={"comet": name, "sep_deg": sep, "sep_min_deg": sep_min,
+                      "alt": alt, "sun_alt": sun_alt, "visible": visible,
+                      "object_mag": float(obj.magnitude if kind == "star" else obj.mag),
+                      "object": f"HIP {int(obj.hip)}" if kind == "star" else obj.Name,
+                      "kind": kind},
+            ))
+    return out
+
+
+def _describe_star(obj) -> str:
+    hip = int(obj.hip)
+    named = STAR_NAMES_RU.get(hip)
+    mag = f"V={obj.magnitude:+.1f}m".replace(".", ",")
+    return f"звезды {named} (HIP {hip}, {mag})" if named else f"звезды HIP {hip} ({mag})"
+
+
+def _describe_dso(obj) -> str:
+    label = obj.Name
+    label = ("NGC " + label[3:] if label.startswith("NGC")
+             else "IC " + label[2:] if label.startswith("IC") else label)
+    label = label.replace(" 0", " ").rstrip()
+    if pd.notna(obj.messier) and obj.messier:
+        label = f"{obj.messier} ({label})"
+    common = (obj.common or "").split(",")[0].strip()
+    if common:
+        label = f'{obj.type_gen} "{common}" {label}'
+    else:
+        label = f"{obj.type_gen} {label}"
+    mag = f"V={obj.mag:+.1f}m".replace(".", ",")
+    return f"{label} ({mag})"
+
+
+def interesting(meta: dict) -> bool:
+    """Отбор в календарь: тесно + объект достаточно яркий + видно из Москвы."""
+    if not meta["visible"]:
+        return False
+    sep, mag = meta["sep_deg"], meta["object_mag"]
+    if meta["kind"] == "star":
+        # яркая звезда — интересно и на градусе, слабая — только при тесном проходе
+        return (mag <= 4.5 and sep <= 1.0) or (mag <= 6.5 and sep <= 0.5)
+    return sep <= 1.0 and mag <= 11.5
+
+
+def deduplicate(events: list[Event], hours: float = 12.0) -> list[Event]:
+    """Одно сближение — одна строка: в окне hours оставляем самое тесное."""
+    kept: list[Event] = []
+    for ev in sorted(events, key=lambda e: e.meta["sep_deg"]):
+        clash = any(
+            other.meta["comet"] == ev.meta["comet"]
+            and other.meta["kind"] == ev.meta["kind"]
+            and abs((other.when - ev.when).total_seconds()) < hours * 3600
+            for other in kept)
+        if not clash:
+            kept.append(ev)
+    return sorted(kept, key=lambda e: e.when)
+
+
+def all_events(start: dt.datetime, end: dt.datetime, max_comets: int = 20):
+    """События по кометам.
+
+    Возвращает (строки для календаря, все найденные сближения, таблица комет).
+    """
+    bright = select_bright(start, end)
+    selected = list(bright.head(max_comets)["row"])
+    known = {comet_name(r["designation"]) for r in selected}
+    # кометы из списка наблюдения добавляем, даже если формально слабее порога
+    df = load_elements()
+    for tag in WATCHLIST:
+        for _, row in df[df.designation.str.startswith(tag, na=False)].iterrows():
+            if comet_name(row["designation"]) not in known:
+                selected.append(row)
+                known.add(comet_name(row["designation"]))
+
+    stars, dso = bright_stars(), deep_sky()
+    found: list[Event] = []
+    for row in selected:
+        grid, ra, dec, mag, comet = track(row, start, end)
+        obs = observability(grid, comet)
+        found += _approach_events(row, grid, ra, dec, mag, stars, "star",
+                                  cfg.APPROACH_LIMIT_DEG, _describe_star, obs)
+        found += _approach_events(row, grid, ra, dec, mag, dso, "dso",
+                                  cfg.APPROACH_LIMIT_DEG, _describe_dso, obs)
+    calendar = deduplicate([e for e in found if interesting(e.meta)])
+    return calendar, found, bright
