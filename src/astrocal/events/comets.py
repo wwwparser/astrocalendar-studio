@@ -38,8 +38,16 @@ def load_elements() -> pd.DataFrame:
         return mpc.load_comets_dataframe(f)
 
 
-def _orbit(row):
+def orbit(row):
+    """Тело Skyfield по строке орбитальных элементов MPC.
+
+    Публичная точка входа: Binocular Sky строит по ней альт/азимут комет,
+    не повторяя разбор элементов у себя.
+    """
     return body("sun") + mpc.comet_orbit(row, timescale(), GM_SUN)
+
+
+_orbit = orbit      # исторический внутренний псевдоним
 
 
 def estimate_magnitude(row, r_au, delta_au) -> np.ndarray:

@@ -126,6 +126,43 @@ def deep_sky(mag_limit: float = None) -> pd.DataFrame:
                "ra_degrees", "dec_degrees", "Const"]].reset_index(drop=True)
 
 
+@lru_cache(maxsize=4)
+def deep_sky_extended(mag_limit: float = None) -> pd.DataFrame:
+    """OpenNGC с угловыми размерами и поверхностной яркостью.
+
+    Календарю хватает координат и блеска: он сообщает о сближении кометы с
+    объектом. Наблюдателю в бинокль этого мало — помещается ли объект в поле и
+    не размазан ли он до невидимости, решают размер и поверхностная яркость,
+    поэтому здесь отдаются и они. Единицы OpenNGC: `MajAx`/`MinAx` — угловые
+    минуты, `SurfBr` — величина с квадратной угловой секунды.
+    """
+    limit = cfg.DSO_MAG_LIMIT if mag_limit is None else mag_limit
+    if not NGC_CSV.exists():
+        r = requests.get(NGC_URL, timeout=120)
+        r.raise_for_status()
+        NGC_CSV.write_bytes(r.content)
+    df = pd.read_csv(NGC_CSV, sep=";", low_memory=False)
+    df = df[df["Type"].isin(TYPE_RU) & ~df["Type"].isin(["Dup", "NonEx"])]
+    df = df.dropna(subset=["RA", "Dec"])
+    mag = df["V-Mag"].fillna(df["B-Mag"])
+    df = df.assign(mag=mag).dropna(subset=["mag"])
+    df = df[df["mag"] <= limit].copy()
+    df["ra_degrees"] = df["RA"].map(_hms_to_deg)
+    df["dec_degrees"] = df["Dec"].map(_dms_to_deg)
+    df["type_ru"] = df["Type"].map(TYPE_RU)
+    # пустая строка, а не None: смешанная колонка None/str в pandas
+    # превращается в NaN, и потребитель получает float вместо обозначения
+    df["messier"] = df["M"].apply(lambda v: f"M{int(v)}" if pd.notna(v) else "")
+    df["common"] = df["Common names"].fillna("")
+    df["identifiers"] = df["Identifiers"].fillna("")
+    df["major_arcmin"] = pd.to_numeric(df["MajAx"], errors="coerce")
+    df["minor_arcmin"] = pd.to_numeric(df["MinAx"], errors="coerce")
+    df["surface_brightness"] = pd.to_numeric(df["SurfBr"], errors="coerce")
+    return df[["Name", "Type", "messier", "common", "identifiers", "type_ru",
+               "mag", "major_arcmin", "minor_arcmin", "surface_brightness",
+               "ra_degrees", "dec_degrees", "Const"]].reset_index(drop=True)
+
+
 def angular_distance_deg(ra1, dec1, ra2, dec2):
     """Гаверсинус: расстояние между точками на сфере, градусы. Векторизуется."""
     ra1, dec1, ra2, dec2 = (np.radians(np.asarray(v, dtype=float))

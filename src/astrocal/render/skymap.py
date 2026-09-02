@@ -16,40 +16,21 @@ from pathlib import Path
 import numpy as np
 from matplotlib.figure import Figure
 
-from .. import config as cfg
 from ..cities import City, topos
+from ..constellations import (CONSTELLATION_FILE, CONSTELLATION_URL,
+                              constellation_lines)
 from ..core import body, timescale
 from ..fmt import ru_constellation
 from . import styles
 
-CONSTELLATION_FILE = cfg.CACHE / "constellationship.fab"
-CONSTELLATION_URL = ("https://raw.githubusercontent.com/Stellarium/stellarium/"
-                     "v0.21.3/skycultures/western/constellationship.fab")
+__all__ = ["constellation_lines", "CONSTELLATION_FILE", "CONSTELLATION_URL",
+           "altaz_of", "project", "base_figure", "clip", "draw_stars",
+           "draw_object", "save", "sky_at", "planet_highlights", "LABELLED"]
 
 # Созвездия, чьи названия подписываем: остальные превращают карту в кашу
 LABELLED = {"UMa", "UMi", "Cas", "Cyg", "Lyr", "Aql", "Boo", "Vir", "Leo", "Ori",
             "Tau", "Gem", "Cnc", "Sco", "Sgr", "Peg", "And", "Per", "Aur", "CMa",
             "Cap", "Aqr", "Psc", "Ari", "Dra", "Her", "Oph", "Cet", "Eri"}
-
-
-@lru_cache(maxsize=1)
-def constellation_lines():
-    """Пары HIP-номеров, соединённые линиями созвездий."""
-    from skyfield.data import stellarium
-
-    if not CONSTELLATION_FILE.exists():
-        try:
-            import requests
-            response = requests.get(CONSTELLATION_URL, timeout=60)
-            response.raise_for_status()
-            CONSTELLATION_FILE.write_bytes(response.content)
-        except Exception:
-            return ()
-    try:
-        with CONSTELLATION_FILE.open("rb") as handle:
-            return tuple(stellarium.parse_constellations(handle))
-    except Exception:
-        return ()
 
 
 @lru_cache(maxsize=4)

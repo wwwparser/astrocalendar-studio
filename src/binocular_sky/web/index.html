@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Binocular Sky — 3D</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="stage"></div>
+
+<div id="overlay">
+  <div id="readout">
+    <div class="row"><span class="label">Азимут</span><span id="az">—</span></div>
+    <div class="row"><span class="label">Высота</span><span id="alt">—</span></div>
+    <div class="row"><span class="label">Направление</span><span id="dir">—</span></div>
+  </div>
+  <div id="compass"><canvas id="compass-canvas" width="150" height="150"></canvas></div>
+</div>
+
+<div id="hint">Тяните мышью — поворот. Колесо — увеличение. Двойной щелчок по объекту — выбрать.</div>
+
+<div id="binocular-view" hidden>
+  <canvas id="binocular-canvas"></canvas>
+  <div id="binocular-caption"></div>
+</div>
+
+<div id="banner" hidden></div>
+
+<!-- Мост в Python. Файл входит в состав Qt и лежит в его ресурсах,
+     поэтому интернет для него не нужен. В обычном браузере тега просто
+     не будет — сцена продолжит работать без связи с приложением. -->
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -558,6 +558,38 @@ NEW → UPDATED → UNCHANGED, прочитано/скрыто/перенесе�
 - [`docs/guide.md`](docs/guide.md) — то же руководство отдельным файлом.
 - [`docs/architecture.md`](docs/architecture.md) — устройство слоёв и
   ключевые решения.
+- [`docs/binocular_sky.md`](docs/binocular_sky.md) — Binocular Sky, второе
+  приложение на этом же ядре (см. ниже).
+
+---
+
+## Смежное приложение: Binocular Sky
+
+`astrocal` — не только начинка календаря, но и общее астрономическое ядро.
+На нём же работает **Binocular Sky**: персональный планетарий для наблюдений
+в бинокль с конкретной точки на земле.
+
+```
+                        astrocal
+              (Skyfield, DE440s, jup380s,
+               Hipparcos, OpenNGC, поиск корней)
+                     ↙              ↘
+      AstroCalendar Studio        Binocular Sky
+        календарь и лента          наблюдатель у дома
+```
+
+Календарь отвечает на вопрос «что произойдёт в этом месяце». Binocular Sky —
+на другой: что из моего двора, в мой бинокль, сегодня ночью стоит посмотреть,
+куда повернуться и когда объект выйдет из-за крыши дома. Он знает модель
+участка (дом, деревья, забор), считает местный горизонт и оценивает объекты под
+конкретную оптику.
+
+```
+python -m binocular_sky
+python scripts/build_binocular_sky.py     # dist/BinocularSky/BinocularSky.exe
+```
+
+Подробности — в [`docs/binocular_sky.md`](docs/binocular_sky.md).
 
 ---
 
