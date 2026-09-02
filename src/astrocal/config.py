@@ -2,10 +2,30 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
+import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-ROOT = Path(__file__).resolve().parents[2]
+
+def _root() -> Path:
+    """Каталог, рядом с которым лежат данные, кэш и результаты.
+
+    В собранном приложении `__file__` указывает внутрь дистрибутива, куда
+    писать нельзя и где данных нет. Поэтому у замороженной сборки корнем
+    считается каталог с исполняемым файлом — там же лежит `data/`.
+    Переменная окружения ASTROCAL_HOME перекрывает выбор, если данные
+    держат в другом месте.
+    """
+    override = os.environ.get("ASTROCAL_HOME")
+    if override:
+        return Path(override).expanduser().resolve()
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[2]
+
+
+ROOT = _root()
 DATA = ROOT / "data"
 CACHE = DATA / "cache"
 OUT = ROOT / "out"

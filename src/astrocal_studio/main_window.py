@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox,
 
 from astrocal import config as cfg
 from astrocal.cities import by_key
-from astrocal_app import datastatus, live, service, workspace
+from astrocal_app import bootstrap, datastatus, live, service, workspace
 
 from . import theme
 from .widgets.data_panel import DataStatusPanel, LivePanel
@@ -49,6 +49,7 @@ class MainWindow(QMainWindow):
         self._build()
         self._menu()
         self._restore_settings()
+        QTimer.singleShot(200, self._check_data)
 
     # ------------------------------------------------------------ интерфейс
 
@@ -129,6 +130,7 @@ class MainWindow(QMainWindow):
         self.qa_panel.recheck_requested.connect(lambda: self.calculate(True))
 
         self.data_panel.refresh_requested.connect(self.refresh_data)
+        self.data_panel.download_requested.connect(self.download_data)
         self.live_panel.refresh_requested.connect(self.refresh_live)
 
     def _menu(self) -> None:
@@ -143,6 +145,10 @@ class MainWindow(QMainWindow):
             action.setShortcut(shortcut)
             action.triggered.connect(handler)
             file_menu.addAction(action)
+
+        data_action = QAction("Скачать недостающие данные…", self)
+        data_action.triggered.connect(lambda: self.download_data(True))
+        file_menu.insertAction(file_menu.actions()[1], data_action)
 
         edit_menu = self.menuBar().addMenu("Правка")
         add_action = QAction("Добавить событие вручную…", self)
@@ -161,11 +167,61 @@ class MainWindow(QMainWindow):
         about.triggered.connect(self._about)
         help_menu.addAction(about)
 
+    # ------------------------------------------------------------ данные
+
+    def _check_data(self) -> None:
+        """При первом запуске данных ещё нет — предложить скачать сразу."""
+        required = bootstrap.missing(required_only=True)
+        self.set_status(bootstrap.status_summary())
+        if not required:
+            return
+        self.right_tabs.setCurrentWidget(self.data_panel)
+        listing = "\n".join(f"· {item.title} — {item.size_text}"
+                            for item in required)
+        answer = QMessageBox.question(
+            self, "Нужно скачать данные",
+            "Для расчёта не хватает эфемерид и каталогов:\n\n"
+            f"{listing}\n\n"
+            f"Всего {bootstrap.total_size_mb(required)} МБ. Скачать сейчас?\n\n"
+            "Файлы лягут в каталог data рядом с программой и понадобятся "
+            "только один раз.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if answer == QMessageBox.Yes:
+            self.download_data(required_only=True)
+
+    def download_data(self, required_only: bool = True) -> None:
+        """Скачать недостающие эфемериды и каталоги."""
+        if self.runner.busy:
+            self.set_status("Дождитесь окончания текущей операции")
+            return
+        items = bootstrap.missing(required_only=required_only)
+        if not items:
+            self.set_status("Скачивать нечего — все данные на месте")
+            return
+        self._set_busy(True, f"Загрузка данных: {len(items)} файл(ов), "
+                             f"{bootstrap.total_size_mb(items)} МБ…")
+        self.runner.submit(
+            "download", bootstrap.download_all, required_only,
+            on_progress=self._progress,
+            on_result=self._download_done,
+            on_error=self._task_failed)
+
+    def _download_done(self, message: str) -> None:
+        self._set_busy(False)
+        self.data_panel.reload()
+        self.set_status(str(message))
+        if not bootstrap.missing(required_only=True):
+            self.right_tabs.setCurrentWidget(self.preview)
+
     # ------------------------------------------------------------ расчёт
 
     def calculate(self, use_horizons: bool = True) -> None:
         if self.runner.busy:
             self.set_status("Дождитесь окончания текущей операции")
+            return
+        missing_data = bootstrap.missing(required_only=True)
+        if missing_data:
+            self._check_data()
             return
         year, month = self.parameters.year, self.parameters.month
         self._set_busy(True, f"Расчёт выпуска {month:02d}.{year}…")
@@ -478,6 +534,8 @@ class MainWindow(QMainWindow):
             "астрономических календарей.<br><br>"
             "Расчёт: JPL DE440s, Horizons, MPC, IOTA, CNEOS, Celestrak, "
             "Hipparcos, OpenNGC.<br>"
+            "Эфемериды и каталоги программа скачивает сама: вкладка "
+            "«Данные» → «Скачать недостающее».<br>"
             "Проект создавался в том числе на реальных выпусках канала "
             "AstroAlert, но не является официальным продуктом канала.")
 

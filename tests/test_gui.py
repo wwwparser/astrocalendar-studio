@@ -157,6 +157,45 @@ def test_data_panel_lists_sources(window):
     assert window.data_panel.tree.topLevelItemCount() > 5
 
 
+def test_data_panel_has_download_button(window):
+    assert window.data_panel.download_button.text() == "Скачать недостающее"
+    assert window.data_panel.missing_label.text()
+
+
+def test_download_button_offers_missing_data(window, monkeypatch):
+    """Когда данных нет, кнопка активна и говорит, сколько качать."""
+    from astrocal_app import bootstrap
+
+    fake = [bootstrap.Download("de440s", "Эфемериды", "http://example/e",
+                               Path("nowhere/de440s.bsp"), 31.2, True)]
+    monkeypatch.setattr(bootstrap, "catalogue", lambda: fake)
+    window.data_panel.reload()
+    assert window.data_panel.download_button.isEnabled()
+    assert "31.2 МБ" in window.data_panel.missing_label.text()
+
+
+def test_calculation_asks_to_download_when_data_is_absent(window, monkeypatch):
+    """Расчёт без данных не падает с непонятной ошибкой, а предлагает скачать."""
+    from astrocal_app import bootstrap
+    from astrocal_studio import main_window as module
+
+    fake = [bootstrap.Download("de440s", "Эфемериды", "http://example/e",
+                               Path("nowhere/de440s.bsp"), 31.2, True)]
+    monkeypatch.setattr(bootstrap, "catalogue", lambda: fake)
+
+    asked = {"value": False}
+    monkeypatch.setattr(module.QMessageBox, "question",
+                        lambda *args, **kwargs: (asked.update(value=True)
+                                                 or module.QMessageBox.No))
+    submitted = []
+    monkeypatch.setattr(window.runner, "submit",
+                        lambda *args, **kwargs: submitted.append(args))
+
+    window.calculate()
+    assert asked["value"], "не предложено скачать данные"
+    assert not submitted, "расчёт запустился без данных"
+
+
 def test_window_state_is_saved_on_close(window, tmp_path, monkeypatch):
     from astrocal_app import workspace
 
