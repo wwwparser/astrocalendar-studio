@@ -558,8 +558,8 @@ NEW → UPDATED → UNCHANGED, прочитано/скрыто/перенесе�
 - [`docs/guide.md`](docs/guide.md) — то же руководство отдельным файлом.
 - [`docs/architecture.md`](docs/architecture.md) — устройство слоёв и
   ключевые решения.
-- [`docs/binocular_sky.md`](docs/binocular_sky.md) — Binocular Sky, второе
-  приложение на этом же ядре (см. ниже).
+- Binocular Sky — второе приложение на этом же ядре, лежит в соседней папке
+  `idea-binocular-astronomy-view` (см. ниже).
 
 ---
 
@@ -584,12 +584,23 @@ NEW → UPDATED → UNCHANGED, прочитано/скрыто/перенесе�
 участка (дом, деревья, забор), считает местный горизонт и оценивает объекты под
 конкретную оптику.
 
+Само приложение живёт в отдельной папке — здесь остаётся только ядро:
+
 ```
-python -m binocular_sky
-python scripts/build_binocular_sky.py     # dist/BinocularSky/BinocularSky.exe
+..\idea-binocular-astronomy-view    srcinocular_sky\      приложение
+    docsinocular_sky.md    описание
 ```
 
-Подробности — в [`docs/binocular_sky.md`](docs/binocular_sky.md).
+Ядро оно берёт отсюда и не дублирует: путь ищется автоматически, при
+нестандартном расположении задаётся переменной `BINOCULAR_SKY_ASTROCAL`.
+
+```
+cd ..\idea-binocular-astronomy-view
+python -m binocular_sky
+```
+
+Из этого следует правило: **менять `src/astrocal` нужно с оглядкой на оба
+приложения.** После правок ядра стоит прогнать и тесты Binocular Sky.
 
 ---
 
