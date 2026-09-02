@@ -508,9 +508,15 @@ def _diversify(results: list[Recommendation], limit: int) -> list[Recommendation
         if len(picked) >= limit:
             break
     if len(picked) < limit:
+        # добор до нужной длины; сравниваем по идентификатору цели, а не сами
+        # рекомендации: у них глубокая структура, и `in` сравнивал бы окна
+        # видимости поэлементно
+        taken = {item.target.id for item in picked}
         for item in results:
-            if item not in picked:
-                picked.append(item)
+            if item.target.id in taken:
+                continue
+            picked.append(item)
+            taken.add(item.target.id)
             if len(picked) >= limit:
                 break
     return picked
