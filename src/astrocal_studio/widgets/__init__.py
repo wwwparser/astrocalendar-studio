@@ -1,0 +1,1 @@
+"""Виджеты интерфейса AstroCalendar Studio."""

@@ -276,6 +276,125 @@ def deduplicate(events: list[Event], hours: float = 12.0) -> list[Event]:
     return sorted(kept, key=lambda e: e.when)
 
 
+def horizons_magnitude(designation: str, start: dt.datetime, end: dt.datetime):
+    """Блеск кометы по JPL Horizons — второй источник для сверки.
+
+    Возвращает (минимум, максимум) или None, если Horizons не отвечает или
+    обозначение неоднозначно.
+    """
+    from ..horizons import query, rows
+
+    tag = designation.split("/")[0].split("(")[0].strip()
+    try:
+        text = query(f"DES={tag};CAP;", start.strftime("%Y-%m-%d"),
+                     end.strftime("%Y-%m-%d"), "5d", quantities="1,9")
+    except Exception:
+        return None
+    values = []
+    for row in rows(text):
+        cells = [c for c in row[1:] if c.strip()]
+        try:
+            values.append(float(cells[2]))
+        except (ValueError, IndexError):
+            continue
+    return (min(values), max(values)) if values else None
+
+
+def milestones(start: dt.datetime, end: dt.datetime,
+               max_comets: int = 8) -> list[Event]:
+    """Опорные точки видимости кометы: перигелий, минимум расстояния, максимум блеска.
+
+    Эти события не привязаны к сближению с каталожным объектом, но именно они
+    определяют, стоит ли вообще искать комету в этом месяце.
+    """
+    from ..observing import best_city
+
+    bright = select_bright(start, end)
+    grid = ts_range(start, end, 360)
+    out: list[Event] = []
+
+    for _, item in bright.head(max_comets).iterrows():
+        row = item["row"]
+        name = comet_name(row["designation"])
+        comet = _orbit(row)
+        astro = earth().at(grid).observe(comet)
+        distance = astro.distance().au
+        heliocentric = body("sun").at(grid).observe(comet).distance().au
+        magnitudes = estimate_magnitude(row, heliocentric, distance)
+
+        # перигелий: минимум гелиоцентрического расстояния внутри месяца
+        index = int(np.argmin(heliocentric))
+        if 0 < index < len(grid) - 1:
+            when = to_msk(grid[index])
+            out.append(Event(
+                when=when,
+                text=(f"Комета {name} ({_fmt_mag(float(magnitudes[index]))}) "
+                      f"проходит перигелий на расстоянии "
+                      + f"{heliocentric[index]:.3f}".replace(".", ",")
+                      + " а.е. от Солнца"),
+                category="comet_milestone", confidence="средняя",
+                rank="interesting",
+                computed=(f"минимум гелиоцентрического расстояния "
+                          f"{heliocentric[index]:.4f} а.е. по элементам MPC"),
+                sources=["MPC CometEls.txt", "Skyfield/DE440s"],
+                precision="hour", meta={"comet": name, "milestone": "perihelion"}))
+
+        # минимум геоцентрического расстояния
+        index = int(np.argmin(distance))
+        if 0 < index < len(grid) - 1:
+            when = to_msk(grid[index])
+            out.append(Event(
+                when=when,
+                text=(f"Комета {name} ({_fmt_mag(float(magnitudes[index]))}) "
+                      "ближе всего к Земле — "
+                      + f"{distance[index]:.3f}".replace(".", ",") + " а.е."),
+                category="comet_milestone", confidence="средняя",
+                rank="interesting",
+                computed=(f"минимум геоцентрического расстояния "
+                          f"{distance[index]:.4f} а.е."),
+                sources=["MPC CometEls.txt", "Skyfield/DE440s"],
+                precision="hour", meta={"comet": name, "milestone": "closest"}))
+
+        # максимум блеска и лучшее окно наблюдения
+        index = int(np.argmin(magnitudes))
+        when = to_msk(grid[index])
+        if start <= when < end:
+            sources = {"MPC": float(magnitudes[index])}
+            horizons = horizons_magnitude(row["designation"], start, end)
+            if horizons:
+                sources["JPL Horizons"] = horizons[0]
+            circumstance = None
+            try:
+                event_stub = Event(when=when, text=name, category="comet",
+                                   meta={})
+                circumstance = best_city(event_stub)
+            except Exception:
+                circumstance = None
+            note = ""
+            if len(sources) > 1:
+                spread = max(sources.values()) - min(sources.values())
+                note = (f"оценки блеска расходятся на {spread:.1f}m: "
+                        + ", ".join(f"{k} {v:+.1f}m" for k, v in sources.items()))
+            out.append(Event(
+                when=when,
+                text=(f"Комета {name} в максимуме блеска "
+                      f"({_fmt_mag(float(magnitudes[index]))}) — расчётная оценка, "
+                      f"не измерение"),
+                category="comet_milestone", confidence="низкая",
+                rank="optional",
+                computed=("минимум расчётной звёздной величины по формуле MPC"
+                          + (f"; {note}" if note else "")
+                          + (f"; лучшие условия: {circumstance.city.name}, "
+                             f"{circumstance.stars_text}" if circumstance else "")),
+                sources=["MPC CometEls.txt"] + (["JPL Horizons"] if horizons else []),
+                precision="hour",
+                notes="Блеск кометы — прогноз по орбитальным параметрам, "
+                      "реальная яркость может отличаться на величины",
+                meta={"comet": name, "milestone": "peak",
+                      "magnitude_sources": sources}))
+    return out
+
+
 def all_events(start: dt.datetime, end: dt.datetime, max_comets: int = 20):
     """События по кометам.
 

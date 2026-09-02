@@ -71,6 +71,11 @@ def rank_event(event: Event) -> str:
     if category in ("jupiter_moons", "saturn_moons", "visibility"):
         return "interesting"
 
+    if category in ("jupiter_phenomena", "lunar_feature", "comet_milestone"):
+        # у этих модулей ранг проставлен при создании события: он зависит от
+        # редкости сочетания и наблюдаемости, а не только от типа
+        return event.rank
+
     if category == "iss":
         return "interesting" if event.confidence != "низкая" else "technical"
 

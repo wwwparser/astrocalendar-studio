@@ -119,6 +119,29 @@ class Event:
         from .fmt import date_time_msk
         return f"▪️{date_time_msk(self.display_time)} — {self.text}"
 
+    @property
+    def event_id(self) -> str:
+        """Устойчивый идентификатор события.
+
+        Нужен, чтобы редакторская правка пережила пересчёт по свежим данным.
+        Берём категорию, дату и «скелет» текста без чисел: время события может
+        сдвинуться на час, блеск — на десятую величины, но «покрытие Венеры
+        Луной 14 сентября» останется тем же событием.
+        """
+        import hashlib
+        import re
+
+        skeleton = re.sub(r"[-+]?\d+[.,]?\d*", "", self.text)
+        skeleton = re.sub(r"\s+", " ", skeleton).strip().lower()
+        key = f"{self.category}|{self.when:%Y-%m-%d}|{skeleton}"
+        return hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
+
+    def fingerprint(self) -> str:
+        """Отпечаток вычисленных значений — меняется при пересчёте по новым данным."""
+        import hashlib
+        return hashlib.sha1(
+            f"{self.when.isoformat()}|{self.text}".encode("utf-8")).hexdigest()[:12]
+
 
 # ---------------------------------------------------------------- геометрия
 

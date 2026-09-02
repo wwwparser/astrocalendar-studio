@@ -7,8 +7,9 @@ import json
 from . import config as cfg
 from .core import Event
 from .events import (asteroid_occultations, asteroids, comets, eclipses, iss,
-                     jupiter_moons, meteors, moon, occultations, planets, seasons,
-                     spaceflight, titan, visibility)
+                     jupiter_moons, jupiter_phenomena, lunar_features, meteors,
+                     moon, occultations, planets, seasons, spaceflight, titan,
+                     visibility)
 from .fmt import MONTHS_NOM_CAP, date_time_msk
 
 HEADER = "АСТРОНОМИЧЕСКИЕ СОБЫТИЯ {month} {year} года (время московское)✨"
@@ -34,6 +35,16 @@ def collect(start: dt.datetime, end: dt.datetime) -> tuple[list[Event], dict]:
     events += seasons.all_events(start, end)
     events += jupiter_moons.all_events(start, end)
     events += meteors.all_events(start, end)
+
+    try:
+        events += jupiter_phenomena.all_events(start, end)
+    except Exception as exc:
+        extra["jupiter_phenomena_error"] = str(exc)
+
+    try:
+        events += lunar_features.all_events(start, end)
+    except Exception as exc:                       # нужны ядра ориентации Луны
+        extra["lunar_features_error"] = str(exc)
     events += visibility.all_events(start, end)
 
     try:
@@ -55,6 +66,10 @@ def collect(start: dt.datetime, end: dt.datetime) -> tuple[list[Event], dict]:
 
     comet_cal, comet_all, comet_table = comets.all_events(start, end)
     events += comet_cal
+    try:
+        events += comets.milestones(start, end)
+    except Exception as exc:
+        extra["comet_milestones_error"] = str(exc)
     extra["comets_all"] = comet_all
     extra["comets_table"] = comet_table
 

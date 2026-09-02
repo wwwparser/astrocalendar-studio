@@ -13,9 +13,18 @@ import datetime as dt
 import numpy as np
 from skyfield import almanac
 
-from ..core import Event, body, earth, find_zero, planets, timescale, to_msk, ts_range
+from ..core import (Event, body, earth, find_zero, observer, planets, timescale,
+                    to_msk, ts_range)
 
 # Рабочий список IMO: код, русское название, λ☉ максимума, ZHR, окно активности
+# радиант: прямое восхождение и склонение в градусах (IMO)
+RADIANTS = {
+    "AUR": (91.0, 39.0), "SPE": (48.0, 40.0), "DSX": (152.0, 0.0),
+    "STA": (32.0, 9.0), "ORI": (95.0, 16.0), "PER": (46.2, 57.4),
+    "LYR": (271.0, 34.0), "GEM": (112.0, 33.0), "QUA": (230.0, 49.0),
+    "ETA": (338.0, -1.0),
+}
+
 SHOWERS = [
     ("AUR", "Ауригиды", 158.6, 6, "28.08–05.09"),
     ("SPE", "Сентябрьские эпсилон-Персеиды", 166.7, 5, "05.09–21.09"),
@@ -60,6 +69,7 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
             moon_note = ("Луна не мешает" if frac < 0.35
                          else "яркая Луна засвечивает небо" if frac > 0.7
                          else "Луна частично мешает")
+            observing = radiant_conditions(code, when, frac)
             out.append(Event(
                 when=when,
                 text=f"Максимум активности метеорного потока {name_ru}",
@@ -68,9 +78,62 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
                 computed=(f"λ☉ = {lam}° (J2000) достигается в "
                           f"{t.utc_strftime('%Y-%m-%d %H:%M UTC')}; ожидаемое ZHR ≈ {zhr}; "
                           f"активность {window}; фаза Луны {frac:.2f} "
-                          f"({'растущая' if waxing else 'убывающая'}), {moon_note}"),
+                          f"({'растущая' if waxing else 'убывающая'}), {moon_note}"
+                          + (f". {observing['summary']}" if observing else "")),
                 sources=["IMO Meteor Shower Calendar (λ☉, ZHR)", "Skyfield/DE440s (момент)"],
                 precision="hour",
-                meta={"code": code, "zhr": zhr, "moon_illum": frac},
+                meta={"code": code, "zhr": zhr, "moon_illum": frac,
+                      "observing": observing},
             ))
     return out
+
+
+def radiant_conditions(code: str, when: dt.datetime, moon_illumination: float,
+                       min_altitude: float = 20.0) -> dict | None:
+    """Практические условия наблюдения потока: радиант, окно, помеха Луны.
+
+    Максимум активности сам по себе мало что говорит: поток видно тогда, когда
+    радиант достаточно высоко и небо тёмное. Считаем окно на ночь максимума.
+    """
+    from skyfield.api import Star
+
+    coordinates = RADIANTS.get(code)
+    if coordinates is None:
+        return None
+    ra, dec = coordinates
+    radiant = Star(ra_hours=ra / 15.0, dec_degrees=dec)
+    site = observer()
+
+    night_start = when.replace(hour=18, minute=0, second=0, microsecond=0)
+    grid = ts_range(night_start, night_start + dt.timedelta(hours=14), 10)
+    altitude = site.at(grid).observe(radiant).apparent().altaz()[0].degrees
+    sun_altitude = site.at(grid).observe(body("sun")).apparent().altaz()[0].degrees
+    moon_altitude = site.at(grid).observe(body("moon")).apparent().altaz()[0].degrees
+
+    good = (altitude > min_altitude) & (sun_altitude < -12)
+    if not good.any():
+        return {"summary": "радиант не поднимается достаточно высоко на тёмном небе",
+                "max_altitude": float(np.max(altitude)), "window": None}
+
+    indices = np.where(good)[0]
+    window_start, window_end = to_msk(grid[indices[0]]), to_msk(grid[indices[-1]])
+    best = int(indices[np.argmax(altitude[indices])])
+    moon_up = bool(np.any(moon_altitude[indices] > 0))
+    interference = ("Луна под горизонтом" if not moon_up
+                    else "Луна почти не мешает" if moon_illumination < 0.3
+                    else "Луна подсвечивает небо" if moon_illumination < 0.65
+                    else "яркая Луна сильно мешает")
+    stars = 4 if (not moon_up or moon_illumination < 0.3) else \
+        (3 if moon_illumination < 0.65 else 2)
+    if altitude[best] > 55:
+        stars = min(5, stars + 1)
+
+    return {
+        "summary": (f"лучшее время {window_start:%H:%M}–{window_end:%H:%M} МСК, "
+                    f"радиант поднимается до {altitude[best]:.0f}°, {interference}, "
+                    f"условия {'★' * stars}"),
+        "window": (window_start, window_end),
+        "max_altitude": float(altitude[best]),
+        "moon_interference": interference,
+        "stars": stars,
+    }
