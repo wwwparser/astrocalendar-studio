@@ -192,6 +192,24 @@ def add_manual_event(issue: Issue, when: dt.datetime, text: str,
     return item
 
 
+def add_live_event(issue: Issue, record) -> EditableEvent:
+    """Поставить в выпуск запись живой ленты.
+
+    Событие помечается происхождением `live` и ссылкой на исходную запись:
+    если данные источника потом изменятся, редактор увидит расхождение, но
+    его формулировку никто не перепишет автоматически.
+    """
+    event = record.to_event()
+    existing = issue.by_id(event.event_id)
+    if existing is not None:
+        return existing
+    item = EditableEvent(event=event, manual=True, selected=True,
+                         order=len(issue.events))
+    issue.events.append(item)
+    issue.normalise_order()
+    return item
+
+
 def kind_counts(issue: Issue) -> dict[str, int]:
     counts: dict[str, int] = {}
     for item in issue.events:

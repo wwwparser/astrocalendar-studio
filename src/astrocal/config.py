@@ -68,3 +68,46 @@ def month_bounds(year: int = YEAR, month: int = MONTH) -> tuple[dt.datetime, dt.
     start = dt.datetime(year, month, 1, tzinfo=MSK)
     end = dt.datetime(year + (month == 12), month % 12 + 1, 1, tzinfo=MSK)
     return start, end
+
+
+# ------------------------------------------------------------------ малые тела
+
+# Пороги редакционной значимости сближений околоземных астероидов.
+# Вынесены сюда намеренно: это редакторские решения, а не физика, и менять их
+# приходится чаще, чем код.
+LUNAR_DISTANCE_KM = 384400.0    # 1 LD
+
+NEO_SEARCH_RADIUS_AU = 0.05     # что вообще запрашиваем у CNEOS
+NEO_MUST_LD = 1.0               # ближе Луны — событие месяца
+NEO_INTERESTING_LD = 5.0
+NEO_INTERESTING_DIAMETER_M = 20.0
+NEO_LARGE_DIAMETER_M = 100.0
+NEO_LARGE_LD = 20.0
+NEO_MAX_IN_CALENDAR = 4         # иначе календарь превращается в поток мелких NEO
+NEO_ALBEDO = 0.14               # для оценки диаметра по H
+
+# Покрытия звёзд астероидами
+OCC_STAR_MAG_LIMIT = 10.0       # предел блеска звезды для отбора кандидатов
+OCC_MIN_DROP_MAG = 1.5          # падение блеска, ниже которого смотреть нечего
+OCC_MAX_SUN_ALT_DEG = -6.0      # на дневном небе покрытие не наблюдают
+OCC_PREDICTION_STALE_DAYS = 30.0    # прогноз старше — пересчитать перед публикацией
+OCC_ORBIT_STALE_DAYS = 60.0         # орбита старше — предупредить
+OCC_PATH_SHIFT_ALERT_KM = 20.0      # сдвиг полосы, о котором сообщаем редактору
+
+# Открытия новых комет
+COMET_DISCOVERY_MUST_MAG = 6.0          # прогнозируемый максимум ярче — событие
+COMET_DISCOVERY_INTERESTING_MAG = 10.0
+COMET_DISCOVERY_CLOSE_EARTH_AU = 0.3    # необычно тесное сближение с Землёй
+COMET_DISCOVERY_SMALL_Q_AU = 0.3        # околосолнечная комета
+
+# Новые и сверхновые (TNS)
+TRANSIENT_MAG_LIMIT = 13.0              # что показываем в основной ленте Live
+TRANSIENT_MUST_MAG = 8.0                # ярче — событие, о котором пишут отдельно
+TRANSIENT_CONFIRMED_ONLY = True         # только классифицированные объекты
+TRANSIENT_STAR_LIMITS = (6.0, 10.0, 13.0, 15.0)   # границы ★★★★★…★
+
+# Сетевой слой
+NET_CACHE = CACHE / "net"
+NET_MIN_INTERVAL_S = 1.0        # пауза между запросами к одному хосту
+NET_RETRIES = 3
+LIVE_DIR = DATA / "live"

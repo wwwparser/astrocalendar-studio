@@ -28,6 +28,14 @@ NAME = "AstroCalendarStudio"
 
 HIDDEN_IMPORTS = [
     "astrocal", "astrocal_app", "astrocal_studio",
+    # наблюдатели живой ленты импортируются внутри функций — статический
+    # анализ PyInstaller их видит, но лучше назвать явно
+    "astrocal.live", "astrocal.live.neo_watch", "astrocal.live.new_comets",
+    "astrocal.live.transients", "astrocal.live.occultation_watch",
+    "astrocal.live.discovery_service", "astrocal.live.post",
+    "astrocal.qa_live", "astrocal.tns", "astrocal.net", "astrocal.secrets",
+    "astrocal.events.close_approaches", "astrocal_app.livefeed",
+    "astrocal_studio.guide", "astrocal_studio.widgets.live_panel",
     "skyfield", "skyfield.data.hipparcos", "skyfield.data.mpc",
     "skyfield.data.stellarium", "skyfield.eclipselib", "skyfield.magnitudelib",
     "skyfield.framelib", "skyfield.planetarylib", "sgp4",

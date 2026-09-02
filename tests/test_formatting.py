@@ -70,3 +70,19 @@ def test_hour_precision_rounds_to_nearest_hour():
                   text="x", category="test", precision="hour")
     assert event.display_time.hour == 11
     assert event.display_time.minute == 0
+
+# ------------------------------------------------------------------ числа
+
+
+def test_number_uses_a_comma():
+    from astrocal.fmt import number
+    assert number(12.8) == "12,8"
+    assert number(1.234, 2) == "1,23"
+    assert number(3.9, 1, sign=True) == "+3,9"
+
+
+def test_number_does_not_touch_the_rest_of_the_sentence():
+    """Замена точки на запятую во всей строке ломает «а.е.» и «Макс.»."""
+    from astrocal.fmt import number
+    assert f"Макс. длительность: {number(0.6)} с" == "Макс. длительность: 0,6 с"
+    assert f"{number(1.1, 2)} а.е." == "1,10 а.е."

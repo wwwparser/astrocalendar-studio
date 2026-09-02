@@ -79,3 +79,15 @@ def angle_deg(deg: float) -> str:
 
 def distance_km(km: float) -> str:
     return f"{km:.0f}"
+
+
+def number(value: float, digits: int = 1, sign: bool = False) -> str:
+    """Число с запятой как десятичным разделителем.
+
+    Отдельная функция нужна потому, что соблазн написать
+    `f"... {x:.1f} а.е.".replace(".", ",")` приводит к «а,е,» и «Макс,
+    длительность»: замена бьёт по всем точкам строки, а не только по
+    десятичной. Форматируем число, а не предложение.
+    """
+    text = f"{value:+.{digits}f}" if sign else f"{value:.{digits}f}"
+    return text.replace(".", ",")

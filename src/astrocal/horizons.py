@@ -29,8 +29,14 @@ def _cache_path(params: dict):
 
 def query(command: str, start: str, stop: str, step: str,
           quantities: str = "1,31", center: str = "500@399",
-          timeout: int = 60, retries: int = 3) -> str:
-    """Сырой текст ответа Horizons. Результат кэшируется в data/cache."""
+          timeout: int = 60, retries: int = 3,
+          site_coord: tuple[float, float, float] | None = None) -> str:
+    """Сырой текст ответа Horizons. Результат кэшируется в data/cache.
+
+    `site_coord` — (долгота в.д., широта, высота в км) для расчёта из
+    конкретной точки: так получают высоту над горизонтом и азимут объекта
+    для города, а не для геоцентра.
+    """
     params = {
         "format": "text", "COMMAND": f"'{command}'", "OBJ_DATA": "'NO'",
         "MAKE_EPHEM": "'YES'", "EPHEM_TYPE": "'OBSERVER'", "CENTER": f"'{center}'",
@@ -38,6 +44,11 @@ def query(command: str, start: str, stop: str, step: str,
         "QUANTITIES": f"'{quantities}'", "ANG_FORMAT": "'DEG'", "CSV_FORMAT": "'YES'",
         "TIME_DIGITS": "'MINUTES'", "APPARENT": "'AIRLESS'",
     }
+    if site_coord is not None:
+        longitude, latitude, elevation_km = site_coord
+        params["CENTER"] = "'coord@399'"
+        params["COORD_TYPE"] = "'GEODETIC'"
+        params["SITE_COORD"] = f"'{longitude:.4f},{latitude:.4f},{elevation_km:.4f}'"
     path = _cache_path(params)
     if path.exists():
         return path.read_text(encoding="utf-8")
@@ -68,3 +79,50 @@ def rows(text: str) -> Iterable[list[str]]:
             break
         if inside and line.strip():
             yield [c.strip() for c in line.split(",")]
+
+
+HEADER_MARK = "Date_"
+
+
+def columns(text: str) -> list[str]:
+    """Имена колонок из шапки CSV-ответа.
+
+    Разбор по номерам колонок ломается при малейшем изменении набора величин:
+    у Horizons между датой и координатами стоят два безымянных поля признаков
+    освещённости. Имена берём из самой шапки.
+    """
+    names: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("$$SOE"):
+            break
+        if HEADER_MARK in line and "," in line:
+            names = [cell.strip() for cell in line.split(",")]
+    result, blank = [], 0
+    for name in names:
+        if not name:
+            blank += 1
+            result.append(f"flag{blank}")
+        else:
+            result.append(name)
+    return result
+
+
+def table(text: str) -> list[dict]:
+    """Строки ответа как словари «имя колонки → значение»."""
+    names = columns(text)
+    if not names:
+        return []
+    out = []
+    for row in rows(text):
+        record = dict(zip(names, row))
+        record["_time"] = row[0]
+        out.append(record)
+    return out
+
+
+def column_named(record: dict, *fragments: str):
+    """Значение колонки, в имени которой встречается фрагмент."""
+    for key, value in record.items():
+        if any(fragment in key for fragment in fragments):
+            return value
+    return None

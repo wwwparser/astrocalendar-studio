@@ -154,3 +154,40 @@ def bounds(lat, lon, mask) -> dict:
     return {"lat_min": float(lat[mask].min()), "lat_max": float(lat[mask].max()),
             "lon_min": float(lon[mask].min()), "lon_max": float(lon[mask].max()),
             "points": int(mask.sum())}
+
+
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Расстояние по поверхности между двумя точками, км."""
+    import numpy as np
+
+    phi1, phi2 = np.radians(lat1), np.radians(lat2)
+    d_phi = phi2 - phi1
+    d_lambda = np.radians(lon2 - lon1)
+    a = (np.sin(d_phi / 2) ** 2
+         + np.cos(phi1) * np.cos(phi2) * np.sin(d_lambda / 2) ** 2)
+    return float(2 * EARTH_A_KM * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0))))
+
+
+def path_shift_km(previous: list[dict], current: list[dict]) -> float | None:
+    """Насколько сдвинулась полоса: медиана расстояний между линиями.
+
+    Точки сопоставляются по времени, если оно есть в обеих линиях, и по
+    ближайшей точке — если моменты разошлись. Медиана, а не максимум: у концов
+    трека расхождение всегда велико из-за разной длины полосы, и максимум
+    показывал бы сдвиг там, где его нет.
+    """
+    import numpy as np
+
+    if not previous or not current:
+        return None
+    distances = []
+    for point in current:
+        candidates = previous
+        moment = point.get("utc")
+        if moment is not None and previous[0].get("utc") is not None:
+            candidates = [min(previous,
+                              key=lambda p: abs((p["utc"] - moment).total_seconds()))]
+        distances.append(min(
+            haversine_km(point["lat"], point["lon"], other["lat"], other["lon"])
+            for other in candidates))
+    return float(np.median(distances)) if distances else None

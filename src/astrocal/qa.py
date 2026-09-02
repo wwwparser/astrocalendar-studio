@@ -163,6 +163,39 @@ def check_angles(event: Event) -> None:
             _add(event, "WARN", "angle", f"угловое расстояние оформлено странно: {token}")
 
 
+def check_close_approach(event: Event) -> None:
+    """Сближение NEO: расстояние, перевод в лунные расстояния, скорость.
+
+    Ошибка в этих трёх числах — самая заметная для читателя: «в 25 км от Земли»
+    вместо «в 25 млн км» выглядит как конец света, а не как рядовой пролёт.
+    """
+    from . import config as cfg
+
+    meta = event.meta or {}
+    distance_km = meta.get("distance_km")
+    if not distance_km:
+        return
+    if distance_km <= 0:
+        _add(event, "REVIEW", "neo_distance",
+             f"расстояние {distance_km} км не положительно")
+        return
+    distance_ld = meta.get("distance_ld")
+    if distance_ld is not None:
+        expected = distance_km / cfg.LUNAR_DISTANCE_KM
+        if abs(expected - distance_ld) > 0.01 * expected:
+            _add(event, "REVIEW", "neo_ld",
+                 f"в лунных расстояниях {distance_ld:.2f}, а по километрам "
+                 f"{expected:.2f}")
+    velocity = meta.get("velocity_km_s")
+    if velocity is not None and not (0.5 <= velocity <= 80.0):
+        _add(event, "WARN", "neo_velocity",
+             f"относительная скорость {velocity} км/с вне пределов 0,5…80 км/с")
+    if meta.get("diameter_km") and not (event.provenance or {}).get(
+            "diameter_provenance"):
+        _add(event, "WARN", "neo_diameter",
+             "указан размер, но не указано, измерен он или оценён по H")
+
+
 def check_duplicates(events: list[Event]) -> None:
     seen: dict[tuple, Event] = {}
     for event in events:
@@ -231,6 +264,7 @@ def run(events: list[Event], start: dt.datetime, end: dt.datetime,
         check_magnitudes(event)
         check_constellation(event)
         check_angles(event)
+        check_close_approach(event)
     check_duplicates(events)
     if use_horizons:
         for event in events:

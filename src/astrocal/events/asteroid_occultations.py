@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import dataclass, field
 
 import numpy as np
 from skyfield.framelib import itrs
@@ -183,7 +184,7 @@ def analyse(candidate: Candidate, window_hours: float = 26.0) -> dict | None:
         if path else None
     return {
         "candidate": candidate, "path": path, "shifted": shifted,
-        "axis_miss_km": miss, "hits_earth": bool(path),
+        "track": fine, "axis_miss_km": miss, "hits_earth": bool(path),
         "regions": regions, "regions_within_sigma": regions_sigma,
         "recomputed_utc": path[len(path) // 2]["utc"] if path else closest,
         "feed_shift_hours": shift_hours,
@@ -289,3 +290,313 @@ def _deduplicate(events: list[Event], hours: float = 2.0) -> list[Event]:
             continue
         kept.append(event)
     return kept
+
+
+# ------------------------------------------------------------------ запись события
+
+
+SBDB_API = "https://ssd-api.jpl.nasa.gov/sbdb.api"
+
+
+@dataclass
+class Occultation:
+    """Полная карточка покрытия: и геометрия, и происхождение прогноза.
+
+    Отдельный тип нужен потому, что строка календаря — это ещё не событие.
+    Редактору нужны полоса и её границы, наблюдаемость по городам, возраст
+    прогноза и возраст орбиты: по ним принимается решение, публиковать ли
+    событие и не пора ли его пересчитать.
+    """
+    event_id: str
+    asteroid_number: int
+    asteroid_name: str
+    star_id: str
+    star_name: str
+    star_ra_deg: float
+    star_dec_deg: float
+    star_mag: float
+    asteroid_mag: float
+    magnitude_drop: float
+    event_utc: dt.datetime
+    event_local: dt.datetime
+    duration_sec: float
+    asteroid_diameter_km: float
+    path_width_km: float
+    central_path: list = field(default_factory=list)
+    north_limit: list = field(default_factory=list)
+    south_limit: list = field(default_factory=list)
+    prediction_epoch: dt.datetime | None = None
+    orbit_epoch: str = ""
+    orbit_solution: str = ""
+    source: str = ""
+    source_updated_at: str = ""
+    uncertainty_km: float = float("nan")
+    confidence: str = "средняя"
+    regions: list = field(default_factory=list)
+    regions_within_sigma: list = field(default_factory=list)
+    cities_visible: list = field(default_factory=list)
+    sun_altitude_deg: float | None = None
+    star_altitude_deg: float | None = None
+    moon_altitude_deg: float | None = None
+    moon_separation_deg: float | None = None
+    sky_state: str = ""
+    instrument: str = ""
+    quality: str = ""
+    stars: int = 0
+    feed_shift_hours: float | None = None
+    axis_miss_km: float = float("nan")
+
+    @property
+    def live_id(self) -> str:
+        return self.event_id
+
+    @property
+    def prediction_age_days(self) -> float | None:
+        if self.prediction_epoch is None:
+            return None
+        return (dt.datetime.now(dt.timezone.utc)
+                - self.prediction_epoch).total_seconds() / 86400.0
+
+    @property
+    def orbit_age_days(self) -> float | None:
+        if not self.orbit_epoch:
+            return None
+        stamp = _parse_epoch(self.orbit_epoch)
+        if stamp is None:
+            return None
+        return (dt.datetime.now(dt.timezone.utc) - stamp).total_seconds() / 86400.0
+
+    @property
+    def needs_refresh(self) -> bool:
+        """Прогноз пора пересчитать: он стар, а событие уже близко.
+
+        Оба условия обязательны. Полугодовой прогноз на событие через год
+        обновлять незачем, а тот же прогноз за неделю до покрытия обновить
+        необходимо: именно на этом сроке уточнение орбиты сдвигает полосу.
+        """
+        age = self.prediction_age_days
+        if age is None:
+            return False
+        days_left = (self.event_utc
+                     - dt.datetime.now(dt.timezone.utc)).total_seconds() / 86400.0
+        return age > cfg.OCC_PREDICTION_STALE_DAYS and 0 <= days_left <= 60
+
+    @property
+    def freshness_note(self) -> str:
+        parts = []
+        age = self.prediction_age_days
+        if age is not None:
+            parts.append(f"прогноз рассчитан {age:.0f} дн назад")
+        orbit_age = self.orbit_age_days
+        if orbit_age is not None:
+            parts.append(f"орбита решена {orbit_age:.0f} дн назад")
+        if self.needs_refresh:
+            parts.append("рекомендуется пересчёт перед публикацией")
+        return "; ".join(parts)
+
+
+def _parse_epoch(value: str) -> dt.datetime | None:
+    """Дата решения орбиты: SBDB отдаёт её в нескольких форматах."""
+    text = str(value).strip()
+    for pattern in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            return dt.datetime.strptime(text, pattern).replace(
+                tzinfo=dt.timezone.utc)
+        except ValueError:
+            continue
+    try:                       # эпоха может прийти юлианской датой
+        jd = float(text)
+    except ValueError:
+        return None
+    if jd < 2000000:
+        return None
+    return (dt.datetime(1858, 11, 17, tzinfo=dt.timezone.utc)
+            + dt.timedelta(days=jd - 2400000.5))
+
+
+def occultation_id(number: int, star_id: str, when: dt.datetime) -> str:
+    """Устойчивый идентификатор покрытия.
+
+    Момент входит с точностью до минуты: уточнение орбиты сдвигает событие на
+    десятки секунд, и по идентификатору оно должно остаться тем же.
+    """
+    stamp = when.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
+    return f"astocc:{number}:{star_id.strip().replace(' ', '')}:{stamp}"
+
+
+def orbit_epoch(number: int, use_cache: bool = True) -> str:
+    """Дата решения орбиты астероида из JPL SBDB.
+
+    Без неё нельзя ответить на главный вопрос о покрытии: не устарел ли
+    прогноз. Один дешёвый запрос на объект, кэш на сутки.
+    """
+    from ..net import NetworkError, fetch
+
+    try:
+        response = fetch(SBDB_API, params={"sstr": str(number)},
+                         ttl_hours=24.0, use_cache=use_cache, timeout=30.0)
+        orbit = (response.json() or {}).get("orbit") or {}
+    except (NetworkError, ValueError, KeyError, TypeError):
+        return ""
+    return str(orbit.get("soln_date") or orbit.get("epoch") or "")
+
+
+def star_name_ru(star_id: str) -> str:
+    """Русское имя звезды, если она есть в списке именованных."""
+    from ..catalogs import STAR_NAMES_RU
+
+    digits = "".join(ch for ch in star_id if ch.isdigit())
+    if star_id.upper().startswith("HIP") and digits:
+        return STAR_NAMES_RU.get(int(digits), "")
+    return ""
+
+
+def sky_state(sun_altitude_deg: float | None) -> str:
+    if sun_altitude_deg is None:
+        return "неизвестно"
+    if sun_altitude_deg > -0.5:
+        return "день"
+    if sun_altitude_deg > -18.0:
+        return "сумерки"
+    return "ночь"
+
+
+def local_circumstances(path: list, star_ra_deg: float, star_dec_deg: float,
+                        star_mag: float | None = None, cities=None,
+                        band_half_width_km: float = 0.0) -> list[dict]:
+    """Обстоятельства покрытия по городам: кто в полосе и что там на небе."""
+    from skyfield.api import Star, wgs84
+
+    from ..cities import all_cities
+    from ..core import body, planets, timescale
+    from ..geo import haversine_km
+    from ..observing import instrument_for
+
+    if not path:
+        return []
+    ts = timescale()
+    star = Star(ra_hours=star_ra_deg / 15.0, dec_degrees=star_dec_deg)
+    out = []
+    for city in (cities or all_cities()):
+        nearest = min(path, key=lambda p: haversine_km(city.lat, city.lon,
+                                                       p["lat"], p["lon"]))
+        distance = haversine_km(city.lat, city.lon, nearest["lat"], nearest["lon"])
+        t = ts.from_datetime(nearest["utc"])
+        site = planets()["earth"] + wgs84.latlon(city.lat, city.lon, city.elevation_m)
+        star_alt = float(site.at(t).observe(star).apparent().altaz()[0].degrees)
+        sun_alt = float(site.at(t).observe(body("sun")).apparent().altaz()[0].degrees)
+        moon_alt = float(site.at(t).observe(body("moon")).apparent().altaz()[0].degrees)
+        out.append({
+            "city": city.name,
+            "distance_km": distance,
+            "inside": distance <= max(band_half_width_km, 1.0),
+            "when": nearest["utc"].astimezone(cfg.MSK),
+            "star_altitude_deg": star_alt,
+            "sun_altitude_deg": sun_alt,
+            "moon_altitude_deg": moon_alt,
+            "sky": sky_state(sun_alt),
+            "instrument": instrument_for(star_mag),
+        })
+    return sorted(out, key=lambda item: item["distance_km"])
+
+
+def record_for(candidate: Candidate, result: dict, cities=None,
+               with_orbit_epoch: bool = True) -> Occultation:
+    """Собрать полную карточку покрытия из кандидата и пересчитанной геометрии."""
+    from skyfield import almanac
+    from skyfield.api import Star, wgs84
+
+    from ..core import body, planets, timescale
+    from ..observing import instrument_for, score_conditions
+
+    path = result.get("path") or []
+    when_utc = result.get("recomputed_utc") or candidate.predicted_utc
+    width = candidate.diameter_km if np.isfinite(candidate.diameter_km) else 0.0
+
+    # Границы полосы — та же ось тени, сдвинутая на половину диаметра астероида
+    fine = result.get("track")
+    north: list = []
+    south: list = []
+    if fine and width:
+        north = shadow_path(fine, candidate.star_ra_deg, candidate.star_dec_deg,
+                            width / 2.0)
+        south = shadow_path(fine, candidate.star_ra_deg, candidate.star_dec_deg,
+                            -width / 2.0)
+
+    entry = next((p for p in path if point_in_russia(p["lat"], p["lon"])),
+                 path[0] if path else None)
+    star_alt = sun_alt = moon_alt = moon_sep = None
+    stars_rating, quality = 0, ""
+    if entry is not None:
+        ts = timescale()
+        t = ts.from_datetime(entry["utc"])
+        site = planets()["earth"] + wgs84.latlon(entry["lat"], entry["lon"])
+        star = Star(ra_hours=candidate.star_ra_deg / 15.0,
+                    dec_degrees=candidate.star_dec_deg)
+        star_alt = float(site.at(t).observe(star).apparent().altaz()[0].degrees)
+        sun_alt = float(site.at(t).observe(body("sun")).apparent().altaz()[0].degrees)
+        moon_alt = float(site.at(t).observe(body("moon")).apparent().altaz()[0].degrees)
+        moon_sep = float(site.at(t).observe(star).apparent().separation_from(
+            site.at(t).observe(body("moon")).apparent()).degrees)
+        illumination = float(almanac.fraction_illuminated(planets(), "moon", t))
+        duration_minutes = (candidate.max_duration_s / 60.0
+                            if np.isfinite(candidate.max_duration_s) else 1.0)
+        score, stars_rating = score_conditions(
+            star_alt, sun_alt, moon_alt, illumination, moon_sep,
+            candidate.star_mag, duration_minutes)
+        quality = f"{score}/100"
+
+    prediction_epoch = None
+    year = candidate.predicted_utc.year
+    for name in (f"occ{year}-raw-generic.zip", f"occ{year}-iota.zip"):
+        feed_file = cfg.CACHE / name
+        if feed_file.exists():
+            prediction_epoch = dt.datetime.fromtimestamp(
+                feed_file.stat().st_mtime, tz=dt.timezone.utc)
+            break
+
+    return Occultation(
+        event_id=occultation_id(candidate.asteroid_number, candidate.star_id,
+                                when_utc),
+        asteroid_number=candidate.asteroid_number,
+        asteroid_name=candidate.asteroid_name,
+        star_id=candidate.star_id,
+        star_name=star_name_ru(candidate.star_id),
+        star_ra_deg=candidate.star_ra_deg,
+        star_dec_deg=candidate.star_dec_deg,
+        star_mag=candidate.star_mag,
+        asteroid_mag=candidate.asteroid_mag,
+        magnitude_drop=candidate.magnitude_drop,
+        event_utc=when_utc,
+        event_local=when_utc.astimezone(cfg.MSK),
+        duration_sec=candidate.max_duration_s,
+        asteroid_diameter_km=candidate.diameter_km,
+        path_width_km=width,
+        central_path=path,
+        north_limit=north,
+        south_limit=south,
+        prediction_epoch=prediction_epoch,
+        orbit_epoch=(orbit_epoch(candidate.asteroid_number)
+                     if with_orbit_epoch else ""),
+        orbit_solution=candidate.orbit_solution,
+        source=f"IOTA/asteroidoccultation.com ({candidate.feed})",
+        source_updated_at=(prediction_epoch.isoformat() if prediction_epoch else ""),
+        uncertainty_km=candidate.sigma_km,
+        confidence=("средняя" if result.get("regions_within_sigma") else "низкая"),
+        regions=list(result.get("regions") or []),
+        regions_within_sigma=list(result.get("regions_within_sigma") or []),
+        cities_visible=local_circumstances(path, candidate.star_ra_deg,
+                                           candidate.star_dec_deg,
+                                           candidate.star_mag, cities,
+                                           width / 2.0),
+        sun_altitude_deg=sun_alt,
+        star_altitude_deg=star_alt,
+        moon_altitude_deg=moon_alt,
+        moon_separation_deg=moon_sep,
+        sky_state=sky_state(sun_alt),
+        instrument=instrument_for(candidate.star_mag),
+        quality=quality,
+        stars=stars_rating,
+        feed_shift_hours=result.get("feed_shift_hours"),
+        axis_miss_km=result.get("axis_miss_km", float("nan")),
+    )

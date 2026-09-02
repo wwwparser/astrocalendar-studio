@@ -19,7 +19,7 @@ class Kind:
 
 
 GROUPS = ["Луна", "Планеты", "Спутники планет", "Малые тела", "Метеоры",
-          "Космонавтика", "Наблюдательные явления"]
+          "Космонавтика", "Наблюдательные явления", "Открытия (Live)"]
 
 KINDS: tuple[Kind, ...] = (
     Kind("moon_phase", "Фазы Луны", "Луна"),
@@ -49,6 +49,16 @@ KINDS: tuple[Kind, ...] = (
 
     Kind("meteors", "Метеорные потоки", "Метеоры"),
 
+    # События, пришедшие из живой ленты. Отдельная группа нужна потому, что это
+    # не результат детерминированного расчёта месяца: открытие нельзя было
+    # предсказать первого числа, и в выпуске оно помечено происхождением.
+    Kind("live_neo", "Сближения из Live", "Открытия (Live)", default_on=False),
+    Kind("live_occultation", "Покрытия из Live", "Открытия (Live)",
+         default_on=False),
+    Kind("live_comet", "Открытые кометы", "Открытия (Live)", default_on=False),
+    Kind("live_transient", "Новые и сверхновые", "Открытия (Live)",
+         default_on=False),
+
     Kind("iss", "МКС", "Космонавтика"),
     Kind("css", "ККС / Tiangong", "Космонавтика"),
     Kind("launch", "Космические запуски", "Космонавтика"),
@@ -68,6 +78,9 @@ def classify(event) -> str:
     category = event.category
     text = event.text.lower()
     meta = event.meta or {}
+
+    if category.startswith("live_"):
+        return category if category in BY_KEY else "other"
 
     if meta.get("manual"):
         return "manual"

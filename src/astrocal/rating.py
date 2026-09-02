@@ -27,6 +27,11 @@ def rank_event(event: Event) -> str:
     meta = event.meta or {}
     text = event.text.lower()
 
+    if category.startswith("live_"):
+        # ранг записи живой ленты уже определён её источником и порогами
+        # значимости — пересматривать его по тексту строки неправильно
+        return event.rank
+
     if event.confidence == "низкая":
         return "technical"
 

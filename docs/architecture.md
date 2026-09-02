@@ -7,16 +7,19 @@
 
 ```
               PySide6 GUI (src/astrocal_studio)
-        таблица · редактор · предпросмотр · QA · Live
+   таблица · редактор · предпросмотр · QA · LIVE · guide
                           │  только вызовы сервиса
               Прикладной слой (src/astrocal_app)
-        Issue · EditableEvent · workspace · datastatus · live
+  Issue · EditableEvent · workspace · datastatus · live · livefeed
                           │  только вызовы ядра
                   Ядро (src/astrocal)
      events/* · observing · telegram · qa · rating · verify
-                    │                    │
-        JPL · MPC · IOTA · CNEOS      render/*
-        Horizons · Celestrak          matplotlib → PNG
+                    │            │             │
+        JPL · MPC · IOTA      live/*        render/*
+        TNS · CNEOS · SBDB    состояние      matplotlib
+        Horizons · Celestrak  и снимки       → PNG
+                    │
+              net.py · secrets.py
 ```
 
 Правила, которые не стоит нарушать:
@@ -41,6 +44,12 @@
 | `Circumstances` | `astrocal/observing.py` | обстоятельства наблюдения в городе |
 | `Pass` | `astrocal/render/satellite_map.py` | один видимый пролёт станции |
 | `Candidate` | `astrocal/occultation_feeds.py` | кандидат в покрытие звезды астероидом |
+| `Occultation` | `astrocal/events/asteroid_occultations.py` | покрытие целиком: полоса, границы, свежесть прогноза |
+| `CloseApproach` | `astrocal/events/close_approaches.py` | сближение NEO по данным CNEOS |
+| `ScheduledEvent` | `astrocal/live/model.py` | прогнозируемое событие живой ленты |
+| `DiscoveryEvent` | `astrocal/live/model.py` | открытие: комета, новая, сверхновая |
+| `LiveUpdate` | `astrocal/live/model.py` | уточнение известного прогноза |
+| `LiveState` / `Snapshot` | `astrocal/live/state.py` | память ленты между запусками |
 
 ## Идентичность события
 
@@ -100,3 +109,64 @@
 
 Это важно именно для сборки: внутри дистрибутива PyInstaller `__file__`
 указывает в `_internal`, куда нельзя писать и где данных нет.
+
+## Живая лента
+
+Календарь считает будущее, лента сравнивает состояния. Разница принципиальная,
+и из неё следует всё устройство `astrocal/live`.
+
+**Снимок источника** (`Snapshot`) — множество идентификаторов, отданных в
+прошлый раз, в файле `data/live/<источник>_state.json`. Открытия — это разница
+между текущим списком и снимком. Отдельно обрабатывается первый запуск: снимка
+нет, и объявлять открытием весь каталог TNS или MPC нельзя, поэтому снимок
+просто записывается, а лента остаётся пустой.
+
+**Состояние записей** (`LiveState`, `data/live/state.json`) хранит для каждой
+записи `first_seen_at`, `last_seen_at`, `last_updated_at`, `read`, `ignored`,
+`added_to_workspace` и хэши содержательных полей. Отсюда берутся статусы
+`NEW` / `UPDATED` / `UNCHANGED` и счётчик непросмотренного на вкладке.
+
+Поле `retain` у записи перечисляет ключи `payload`, которые нужно помнить между
+запусками. Через него наблюдатель за покрытиями получает прежнюю центральную
+линию и считает сдвиг полосы. `prepare()` читает прошлое состояние, ничего не
+меняя, — сравнение должно произойти до записи нового.
+
+**Семантика.** `ScheduledEvent` можно поставить в месячный выпуск:
+у него есть момент наступления, и он был предсказуем. `DiscoveryEvent` — нет:
+открытие происходит тогда, когда происходит, и задним числом в календарь не
+вставляется. `LiveUpdate` ссылается на исходную запись через `target_id`.
+
+**Перенос в выпуск** идёт через `service.add_live_event`: событие получает
+`provenance["origin"] = "live"`, ссылку на исходную запись и хэш данных.
+По расхождению хэша `livefeed.Feed.source_changes` находит события, у которых
+источник изменился после переноса. `apply_source_update` обновляет расчётную
+часть и **никогда** не трогает `editor_text`.
+
+## Как добавить источник в ленту
+
+1. Модуль в `astrocal/live/` с функцией
+   `check(...) -> tuple[list[LiveRecord], dict]`. Сводка обязана содержать
+   `status`; ошибку источника возвращают в ней, а не бросают наверх.
+2. Регистрация в `discovery_service.KINDS` и `TITLES`.
+3. Проверки в `astrocal/qa_live.py::CHECKS`.
+4. Строка в `astrocal_app/datastatus.py::sources`, чтобы был виден возраст.
+5. Флажок в `astrocal_studio/widgets/live_panel.py::KIND_FILTERS`.
+6. Тесты со заглушкой сети: снимок, повторный запуск, пороги значимости.
+
+## Сеть и ключи
+
+Все внешние запросы идут через `astrocal/net.py`: кэш на диске с явным сроком
+годности, пауза между обращениями к одному хосту, выдержка при 429 и 5xx,
+подстановка просроченного кэша, если свежих данных получить не удалось.
+Прямой `requests.get` в новом коде — ошибка ревью.
+
+Ключи читаются `astrocal/secrets.py` из `.env`. `MissingCredentials` — это не
+сбой, а сообщение: источник не опрашивается, остальные работают. Ключ не
+должен попасть ни в `provenance`, ни в QA-отчёт, ни в текст ошибки.
+
+## Встроенная справка
+
+Текст руководства лежит в `astrocal_studio/guide.py` — в коде, а не файлом
+рядом с программой: собранное приложение должно открывать справку без `docs/`
+и без интернета. `docs/guide.md` генерируется оттуда же
+(`python -m astrocal_studio.guide`), чтобы два текста не разошлись.

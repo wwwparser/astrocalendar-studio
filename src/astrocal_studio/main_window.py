@@ -11,17 +11,20 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import (QDialog, QDialogButtonBox,
+from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox,
                                QHBoxLayout, QInputDialog, QLabel, QMainWindow,
                                QMessageBox, QPlainTextEdit, QProgressBar,
-                               QSplitter, QTabWidget, QVBoxLayout, QWidget)
+                               QSplitter, QTabWidget, QTextBrowser, QVBoxLayout,
+                               QWidget)
 
 from astrocal import config as cfg
 from astrocal.cities import by_key
-from astrocal_app import bootstrap, datastatus, live, service, workspace
+from astrocal_app import (bootstrap, datastatus, live, livefeed, service,
+                          workspace)
 
 from . import theme
 from .widgets.data_panel import DataStatusPanel, LivePanel
+from .widgets.live_panel import LiveFeedPanel, card_palette
 from .widgets.event_details import EventDetails
 from .widgets.events_table import EventsTable
 from .widgets.parameters_panel import ParametersPanel
@@ -43,6 +46,7 @@ class MainWindow(QMainWindow):
         self.runner = TaskRunner()
         self.issue = None
         self.live_items: list = []
+        self.feed = livefeed.Feed()
 
         self.setWindowTitle(APPLICATION)
         self.setMinimumSize(1180, 700)
@@ -82,8 +86,17 @@ class MainWindow(QMainWindow):
         right.addTab(self.qa_panel, "Проверка")
         self.data_panel = DataStatusPanel(self.tokens)
         right.addTab(self.data_panel, "Данные")
+        # Живое и ближайшее — одна вкладка: и то и другое отвечает на вопрос
+        # «что прямо сейчас», но лента открытий важнее и стоит выше
+        live_tab = QSplitter(Qt.Vertical)
+        self.feed_panel = LiveFeedPanel(self.tokens)
+        live_tab.addWidget(self.feed_panel)
         self.live_panel = LivePanel(self.tokens)
-        right.addTab(self.live_panel, "Live")
+        live_tab.addWidget(self.live_panel)
+        live_tab.setSizes([520, 260])
+        right.addTab(live_tab, "LIVE")
+        self.live_tab_index = right.count() - 1
+        self.setStyleSheet(self.styleSheet() + card_palette(self.tokens))
         right.setMinimumWidth(430)
         self.right_tabs = right
         self.splitter.addWidget(right)
@@ -133,6 +146,14 @@ class MainWindow(QMainWindow):
         self.data_panel.download_requested.connect(self.download_data)
         self.live_panel.refresh_requested.connect(self.refresh_live)
 
+        self.feed_panel.refresh_requested.connect(self.refresh_feed)
+        self.feed_panel.filters_changed.connect(self.apply_feed_filters)
+        self.feed_panel.card_opened.connect(self.mark_live_read)
+        self.feed_panel.map_requested.connect(self.build_live_map)
+        self.feed_panel.add_requested.connect(self.add_live_to_issue)
+        self.feed_panel.post_requested.connect(self.show_live_post)
+        self.feed_panel.ignore_requested.connect(self.ignore_live)
+
     def _menu(self) -> None:
         file_menu = self.menuBar().addMenu("Файл")
         for title, shortcut, handler in (
@@ -145,6 +166,11 @@ class MainWindow(QMainWindow):
             action.setShortcut(shortcut)
             action.triggered.connect(handler)
             file_menu.addAction(action)
+
+        live_action = QAction("Обновить живую ленту", self)
+        live_action.setShortcut("Ctrl+L")
+        live_action.triggered.connect(lambda: self.refresh_feed(30.0))
+        file_menu.insertAction(file_menu.actions()[1], live_action)
 
         data_action = QAction("Скачать недостающие данные…", self)
         data_action.triggered.connect(lambda: self.download_data(True))
@@ -163,6 +189,10 @@ class MainWindow(QMainWindow):
             view_menu.addAction(action)
 
         help_menu = self.menuBar().addMenu("Справка")
+        guide = QAction("Как работать с программой", self)
+        guide.setShortcut(QKeySequence.HelpContents)
+        guide.triggered.connect(self.show_guide)
+        help_menu.addAction(guide)
         about = QAction("О программе", self)
         about.triggered.connect(self._about)
         help_menu.addAction(about)
@@ -403,9 +433,169 @@ class MainWindow(QMainWindow):
         self.live_panel.show_items(items)
         self.set_status(f"Live: событий {len(items)}")
 
+    # ------------------------------------------------------------ живая лента
+
+    def refresh_feed(self, days: float = 30.0) -> None:
+        """Один цикл обращения к источникам. Больше нигде сеть не дёргается."""
+        if self.runner.busy:
+            self.set_status("Дождитесь окончания текущей операции")
+            return
+        self.right_tabs.setCurrentIndex(self.live_tab_index)
+        self.feed_panel.set_busy(True)
+        self._set_busy(True, "Обновление живой ленты…")
+        self.runner.submit(
+            "feed", self.feed.refresh,
+            city_key=self.parameters.city_key, days=days,
+            on_progress=self._progress,
+            on_result=self._feed_ready,
+            on_error=self._feed_failed)
+
+    def _feed_ready(self, result) -> None:
+        self._set_busy(False)
+        self.feed_panel.set_busy(False)
+        self.apply_feed_filters()
+        self.data_panel.reload()
+        self._update_live_badge()
+        broken = [summary.get("title", key)
+                  for key, summary in result.sources.items()
+                  if summary.get("status") in ("недоступен", "нет ключей")]
+        message = (f"Live: новых {result.new}, обновлено {result.updated}, "
+                   f"без изменений {result.unchanged}")
+        if broken:
+            message += "; не ответили: " + ", ".join(broken)
+        self.set_status(message)
+        if self.issue is not None:
+            self._warn_about_live_changes()
+
+    def _feed_failed(self, message: str, details: str) -> None:
+        self.feed_panel.set_busy(False)
+        self._task_failed(message, details)
+
+    def apply_feed_filters(self) -> None:
+        values = self.feed_panel.filter_values()
+        for name, value in values.items():
+            setattr(self.feed.filters, name, value)
+        updated = self.feed.result.finished_at if self.feed.result else None
+        self.feed_panel.show_records(self.feed.visible(), updated)
+        self._update_live_badge()
+
+    def _update_live_badge(self) -> None:
+        """Счётчик непросмотренных значимых записей на ярлыке вкладки."""
+        count = self.feed.badge()
+        self.right_tabs.setTabText(self.live_tab_index,
+                                   f"LIVE ({count})" if count else "LIVE")
+
+    def mark_live_read(self, record) -> None:
+        self.feed.mark_read(record)
+        self._update_live_badge()
+
+    def ignore_live(self, record) -> None:
+        self.feed.ignore(record, not record.ignored)
+        self.apply_feed_filters()
+        self.set_status("Запись скрыта из ленты" if record.ignored
+                        else "Запись возвращена в ленту")
+
+    def add_live_to_issue(self, record) -> None:
+        if self.issue is None:
+            self.set_status("Сначала рассчитайте выпуск")
+            return
+        item = self.feed.add_to_issue(self.issue, record)
+        # категории Live выключены по умолчанию: включаем ту, что понадобилась
+        self.issue.enabled_kinds.add(item.kind)
+        self.parameters.set_enabled_kinds(self.issue.enabled_kinds)
+        self.apply_filters()
+        self._update_live_badge()
+        self.set_status(f"Добавлено в выпуск: {item.calculated_text[:60]}… "
+                        f"(помечено происхождением live)")
+
+    def show_live_post(self, record) -> None:
+        """Отдельный пост об открытии: текст собирается только из полей записи."""
+        text = self.feed.post_text(record)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Отдельный пост")
+        dialog.resize(640, 520)
+        layout = QVBoxLayout(dialog)
+        view = QPlainTextEdit(text)
+        layout.addWidget(view)
+        note = QLabel("Текст построен из полей записи: ничего, чего нет в "
+                      "данных источника, здесь появиться не может.")
+        note.setWordWrap(True)
+        note.setObjectName("Muted")
+        layout.addWidget(note)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        copy_button = buttons.addButton("Копировать",
+                                        QDialogButtonBox.ActionRole)
+        copy_button.clicked.connect(
+            lambda: (QApplication.clipboard().setText(view.toPlainText()),
+                     self.set_status("Пост скопирован в буфер обмена")))
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    def build_live_map(self, record) -> None:
+        if self.runner.busy:
+            self.set_status("Дождитесь окончания текущей операции")
+            return
+        city = by_key(self.parameters.city_key) or by_key("москва")
+        self._set_busy(True, "Построение карты…")
+        self.runner.submit(
+            "live_map", _render_live_map, record, city,
+            on_result=self._live_map_ready,
+            on_error=self._task_failed)
+
+    def _live_map_ready(self, path) -> None:
+        self._set_busy(False)
+        if path is None:
+            self.set_status("Для этой записи карта не строится")
+            return
+        self.set_status(f"Карта сохранена: {path}")
+
+    def _warn_about_live_changes(self) -> None:
+        """Данные источника изменились после переноса записи в выпуск."""
+        changes = self.feed.source_changes(self.issue)
+        if not changes:
+            return
+        listing = "\n".join(f"· {item.calculated_text[:80]}"
+                             for item, _record in changes[:8])
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Данные источника изменились")
+        box.setText("Данные источника изменились после добавления в выпуск:\n\n"
+                    + listing)
+        box.setInformativeText("Редакторская формулировка сохраняется в любом "
+                               "случае — обновляются только расчётные данные.")
+        update = box.addButton("Обновить расчётные данные",
+                               QMessageBox.AcceptRole)
+        box.addButton("Оставить редакцию", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is update:
+            for item, record in changes:
+                self.feed.apply_source_update(item, record)
+            self.apply_filters()
+            self.set_status(f"Обновлено расчётных данных: {len(changes)}")
+
+    # ------------------------------------------------------------ справка
+
+    def show_guide(self) -> None:
+        """Руководство прямо в окне: без интернета и без поиска по репозиторию."""
+        from .guide import guide_text
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Как работать с программой")
+        dialog.resize(860, 660)
+        layout = QVBoxLayout(dialog)
+        view = QTextBrowser()
+        view.setOpenExternalLinks(True)
+        view.setMarkdown(guide_text())
+        layout.addWidget(view)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
+
     def _mode_changed(self, mode: str) -> None:
         if mode == "live":
-            self.right_tabs.setCurrentWidget(self.live_panel)
+            self.right_tabs.setCurrentIndex(self.live_tab_index)
             self.set_status("Режим Live: данные не кэшируются, "
                             "нажмите «Обновить сейчас»")
         else:
@@ -630,6 +820,35 @@ def _render_batch(items, city, progress=None):
     if progress:
         progress("Готово", 100)
     return produced
+
+
+def _render_live_map(record, city):
+    """Карта для записи живой ленты. Выполняется в рабочем потоке."""
+    from astrocal.live.model import KIND_OCCULTATION
+    from astrocal.render import skymap, visibility_map
+
+    MAPS_DIR.mkdir(parents=True, exist_ok=True)
+    stem = record.live_id.replace(":", "_").replace("/", "_")
+    path = MAPS_DIR / f"live_{stem}.png"
+
+    if record.kind == KIND_OCCULTATION:
+        analysis = (record.extra or {}).get("analysis")
+        if not analysis:
+            return None
+        return visibility_map.asteroid_occultation_path(analysis, path)
+
+    payload = record.payload or {}
+    ra = payload.get("ra") or (record.observability or {}).get("ra")
+    dec = payload.get("dec") or (record.observability or {}).get("dec")
+    if ra is None or dec is None:
+        return None
+    from skyfield.api import Star
+    when = (record.observability or {}).get("best_time") or record.moment
+    return skymap.sky_at(
+        city, when, path, "dark",
+        [{"target": Star(ra_hours=float(ra) / 15.0, dec_degrees=float(dec)),
+          "label": record.title[:28], "color": "#8fe388"}],
+        title="Положение на небе")
 
 
 def _send_publication(publication):

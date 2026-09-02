@@ -48,11 +48,19 @@ def dump(issue: Issue) -> dict:
                 "editor_text": item.editor_text,
                 "manual": item.manual,
                 "fingerprint": item.event.fingerprint(),
-                # ручное событие целиком хранится в файле: пересчёт его не вернёт
+                # ручное событие целиком хранится в файле: пересчёт его не вернёт.
+                # То же и для события из живой ленты: месячный расчёт открытие
+                # не воспроизводит, поэтому сохраняем его вместе с источником
                 "manual_payload": ({
                     "when": item.event.when.isoformat(),
                     "text": item.event.text,
                     "rank": item.event.rank,
+                    "category": item.event.category,
+                    "confidence": item.event.confidence,
+                    "computed": item.event.computed,
+                    "sources": item.event.sources,
+                    "provenance": item.event.provenance,
+                    "meta": item.event.meta,
                 } if item.manual else None),
             }
             for item in issue.ordered()
@@ -100,9 +108,7 @@ def apply_to(issue: Issue, payload: dict) -> dict:
 
         if item is None and record.get("manual_payload"):
             data = record["manual_payload"]
-            item = add_manual_event(
-                issue, dt.datetime.fromisoformat(data["when"]),
-                data["text"], data.get("rank", "interesting"))
+            item = _restore_manual(issue, data)
             manual += 1
 
         if item is None:
@@ -122,6 +128,36 @@ def apply_to(issue: Issue, payload: dict) -> dict:
     issue.normalise_order()
     return {"restored": restored, "missing": missing, "changed": changed,
             "manual": manual}
+
+
+def _restore_manual(issue: Issue, data: dict):
+    """Восстановить событие, которого нет в расчёте: ручное или из Live."""
+    from astrocal.core import Event
+
+    from .models import EditableEvent
+
+    item = add_manual_event(issue, dt.datetime.fromisoformat(data["when"]),
+                            data["text"], data.get("rank", "interesting"))
+    if not data.get("category") or data["category"] == "manual":
+        return item
+
+    # запись из живой ленты: возвращаем её вместе с источником и происхождением
+    issue.events.remove(item)
+    event = Event(
+        when=dt.datetime.fromisoformat(data["when"]),
+        text=data["text"], category=data["category"],
+        confidence=data.get("confidence", "средняя"),
+        computed=data.get("computed", ""),
+        sources=list(data.get("sources") or []),
+        rank=data.get("rank", "interesting"),
+        provenance=dict(data.get("provenance") or {}),
+        meta=dict(data.get("meta") or {}),
+    )
+    restored = EditableEvent(event=event, manual=True, selected=True,
+                             order=len(issue.events))
+    issue.events.append(restored)
+    issue.normalise_order()
+    return restored
 
 
 def load_into(issue: Issue, directory: Path | None = None) -> dict:

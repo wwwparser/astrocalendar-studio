@@ -76,7 +76,7 @@ def window(application, issue, tmp_path, monkeypatch):
 def test_window_builds_with_all_panels(window):
     titles = [window.right_tabs.tabText(i)
               for i in range(window.right_tabs.count())]
-    assert titles == ["Публикация", "Проверка", "Данные", "Live"]
+    assert titles == ["Публикация", "Проверка", "Данные", "LIVE"]
     assert window.table.model.rowCount() == 3
 
 
