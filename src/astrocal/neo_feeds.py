@@ -74,7 +74,12 @@ class _TableParser(HTMLParser):
             # закрывает предыдущий — иначе таблица разбирается в пустоту.
             self._flush_row()
             self._row = []
-        elif tag in ("td", "th") and self._row is not None:
+        elif tag in ("td", "th") and self._in_table:
+            # В таблице комет строк <tr> нет вовсе — ячейки идут подряд, а
+            # закрывается всё одним </tr>. Ячейка вне строки открывает строку
+            # сама, как это делает браузер.
+            if self._row is None:
+                self._row = []
             self._flush_cell()
             self._cell = []
 
@@ -258,6 +263,12 @@ def _rows(url: str, expected: list[str], use_cache: bool,
     if not headers:
         raise ValueError(f"на странице {url} не найдена таблица")
     _check_columns(headers, expected, url)
+    if not rows:
+        # Заголовок разобрался, а данных нет — это почти всегда значит, что
+        # разбор не справился с разметкой, а не что таблица пуста. Молчать
+        # здесь нельзя: источник «работает» и отдаёт ноль событий.
+        raise ValueError(f"на странице {url} разобран заголовок, но ни одной "
+                         f"строки данных не найдено")
     return rows, response.fetched_at.isoformat()
 
 

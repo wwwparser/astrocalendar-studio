@@ -159,10 +159,72 @@ def russian_mask(lat, lon, mask, regions_hit):
 
 
 def daytime_over_russia(band, lat, lon, mask, regions_hit) -> bool:
-    """Светло ли там, где покрытие видно из России."""
+    """Светло ли в среднем там, где покрытие видно из России.
+
+    Оставлено для совместимости и для грубой оценки. Одной меткой на всю
+    страну пользоваться нельзя: полоса тянется на тысячи километров, и пока в
+    Якутии полдень, над Новой Землёй глубокая ночь.
+    """
     local = russian_mask(lat, lon, mask, regions_hit)
     sun_alt = band["sun_alt"][local & ~np.isnan(band["sun_alt"])]
     return bool(len(sun_alt)) and float(np.nanmedian(sun_alt)) > -6.0
+
+
+def sky_by_region(band, lat, lon, regions_hit) -> list[tuple]:
+    """Высота Солнца в каждом регионе полосы.
+
+    Возвращает (имя, предложная форма, высота Солнца, состояние неба).
+    Именно из-за отсутствия такой разбивки покрытие Альционы 28 октября было
+    целиком помечено как дневное, хотя над Новой Землёй Солнце на 11° под
+    горизонтом и это полноценное ночное событие.
+    """
+    sun = band["sun_alt"]
+    out = []
+    for name, phrase, _share in regions_hit:
+        entry = next((r for r in RU_REGIONS if r[0] == name), None)
+        if entry is None:
+            continue
+        _n, _p, lat_lo, lat_hi, lon_lo, lon_hi = entry
+        box = ((lat >= lat_lo) & (lat <= lat_hi) &
+               (lon >= lon_lo) & (lon <= lon_hi) & band["mask"] & ~np.isnan(sun))
+        if not box.any():
+            continue
+        altitude = float(np.nanmedian(sun[box]))
+        # Четыре градации, а не две: −3° и −11° — это очень разное небо, и
+        # объединять их в «сумерки» значит терять именно ту информацию, ради
+        # которой наблюдатель читает строку.
+        if altitude > -0.5:
+            state = "day"
+        elif altitude > -6.0:
+            state = "light"
+        elif altitude > -12.0:
+            state = "twilight"
+        else:
+            state = "night"
+        out.append((name, phrase, altitude, state))
+    return out
+
+
+SKY_WORDS = {"night": "ночью", "twilight": "в сумерках",
+             "light": "в светлых сумерках", "day": "днём"}
+
+
+def describe_sky(by_region: list[tuple]) -> str:
+    """«ночью — на Новой Земле…, днём — в Якутии» одной фразой."""
+    if not by_region:
+        return ""
+    groups: dict[str, list[str]] = {}
+    for _name, phrase, _altitude, state in by_region:
+        groups.setdefault(state, []).append(phrase)
+    parts = []
+    for state in ("night", "twilight", "light", "day"):
+        places = groups.get(state)
+        if not places:
+            continue
+        listing = (places[0] if len(places) == 1
+                   else ", ".join(places[:-1]) + " и " + places[-1])
+        parts.append(f"{SKY_WORDS[state]} {listing}")
+    return "; ".join(parts)
 
 
 def star_candidates(start: dt.datetime, end: dt.datetime,
@@ -232,14 +294,13 @@ def build_stars(start: dt.datetime, end: dt.datetime):
             earth().at(cand["t"]).observe(cand["star"]).apparent()))
         label = (f"звезды {cand['name']}" if cand["name"]
                  else f"звезды HIP {cand['hip']}")
-        where = "видимое " + describe(ru[:3])
+        sky = sky_by_region(band, lat, lon, ru)
+        where = "видимое " + (describe_sky(sky) if sky else describe(ru))
 
         daytime = daytime_over_russia(band, lat, lon, mask, ru)
 
         text = (f"Покрытие {label} ({magnitude(cand['mag'])}) Луной "
                 f"({phase_fraction(frac, waxing)}) в созвездии {const}, {where}")
-        if daytime:
-            text += ", дневное небо"
 
         extent = bounds(lat, lon, mask)
         events.append(Event(
@@ -275,9 +336,9 @@ def build(start: dt.datetime, end: dt.datetime):
         const = ru_constellation(constellation_at()(
             earth().at(t).observe(body(name)).apparent()))
 
+        sky = sky_by_region(band, lat, lon, ru)
         if ru:
-            # в посте максимум три региона, полный список остаётся в протоколе
-            where = "видимое " + describe(ru[:3])
+            where = "видимое " + describe_sky(sky) if sky else "видимое " + describe(ru)
         elif world:
             where = "видимое в регионах: " + ", ".join(r[0] for r in world[:3])
         else:
@@ -287,8 +348,6 @@ def build(start: dt.datetime, end: dt.datetime):
 
         text = (f"Покрытие {PLANET_GEN[name]} ({magnitude(mag)}) Луной "
                 f"({phase_fraction(frac, waxing)}) {where}")
-        if daytime:
-            text += ", дневное небо"
 
         extent = bounds(lat, lon, mask)
         events.append(Event(

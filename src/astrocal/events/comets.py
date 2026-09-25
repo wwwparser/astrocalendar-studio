@@ -1,8 +1,19 @@
 """Кометы: отбор ярких, трассировка по небу и автопоиск сближений.
 
+**Про блеск.** Формула MPC `m = g + 5·lg Δ + k·lg r` — не измерение, а прикидка
+по двум параметрам из архива, и для комет, сменивших активность, она ошибается
+на величины: 65P/Gunn по ней выходит +10,5ᵐ при наблюдаемых 18,8ᵐ, 116P/Wild —
++11,8ᵐ при 21,7ᵐ. Публиковать такое нельзя.
+
+Поэтому модель отвечает только за **форму** кривой блеска (зависимость от
+расстояний r и Δ), а её уровень калибруется по наблюдению из COBS: считается
+сдвиг Δm = наблюдение − модель на сегодня и применяется ко всей кривой. Комета,
+которой нет ни в одном источнике наблюдений, в календарь не идёт: её блеск
+ничем не подтверждён.
+
 Порядок работы:
 1. орбитальные элементы MPC (CometEls.txt) → тела Skyfield;
-2. грубая сетка по месяцу → оценка блеска m = g + 5·lg Δ + k·lg r → отбор ярче 12m;
+2. грубая сетка по месяцу → блеск, откалиброванный по наблюдениям → отбор;
 3. частая сетка (15 мин) для отобранных → RA/Dec;
 4. кросс-матч с Hipparcos и OpenNGC → локальные минимумы углового расстояния;
 5. одно сближение = одна строка (момент минимума), а не 20 почти одинаковых.
@@ -10,6 +21,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -50,14 +62,71 @@ def orbit(row):
 _orbit = orbit      # исторический внутренний псевдоним
 
 
-def estimate_magnitude(row, r_au, delta_au) -> np.ndarray:
-    """m = g + 5·lg Δ + k·lg r (обозначения MPC: g = magnitude_g, k = magnitude_k)."""
+def estimate_magnitude(row, r_au, delta_au, offset: float = 0.0) -> np.ndarray:
+    """m = g + 5·lg Δ + k·lg r (обозначения MPC) плюс калибровочный сдвиг.
+
+    `offset` приводит модель к наблюдённому блеску: без него значение остаётся
+    сырой оценкой по архивным параметрам и годится только для отбора кандидатов.
+    """
     g = row["magnitude_g"]
     k = row["magnitude_k"]
     if not np.isfinite(g):
         return np.full_like(np.asarray(delta_au, dtype=float), 99.0)
     k = 10.0 if not np.isfinite(k) else k
-    return g + 5.0 * np.log10(delta_au) + k * np.log10(r_au)
+    return g + 5.0 * np.log10(delta_au) + k * np.log10(r_au) + offset
+
+
+@lru_cache(maxsize=1)
+def brightness_index():
+    """Наблюдённый блеск комет. None — источники недоступны."""
+    from ..comet_feeds import load
+
+    try:
+        index = load()
+    except Exception:                          # noqa: BLE001
+        return None
+    return index if index.available else None
+
+
+def model_magnitude_now(row) -> float | None:
+    """Блеск кометы по модели MPC на текущий момент. None — посчитать нечем."""
+    now = timescale().from_datetime(dt.datetime.now(dt.timezone.utc))
+    try:
+        comet = _orbit(row)
+        delta = float(earth().at(now).observe(comet).distance().au)
+        r = float(body("sun").at(now).observe(comet).distance().au)
+        value = float(estimate_magnitude(row, r, delta))
+    except Exception:                          # noqa: BLE001
+        return None
+    return value if np.isfinite(value) else None
+
+
+def calibrate(row) -> tuple[float, object]:
+    """Сдвиг модели до наблюдения и сама запись наблюдения.
+
+    Возвращает (0.0, None), если кометы нет в источниках: тогда блеск остаётся
+    модельным, и это фиксируется в событии.
+    """
+    index = brightness_index()
+    if index is None:
+        return 0.0, None
+    entry = index.find(str(row["designation"]))
+    if entry is None or entry.current_magnitude is None:
+        return 0.0, None
+    model_now = model_magnitude_now(row)
+    if model_now is None:
+        return 0.0, entry
+    return float(entry.current_magnitude) - model_now, entry
+
+
+def magnitude_note(entry, offset: float) -> str:
+    """Откуда взялся блеск — строка для протокола."""
+    if entry is None:
+        return ("блеск только по модели MPC, наблюдений в COBS и у ван Бёйтенена "
+                "нет — значение ненадёжно")
+    return (f"модель MPC откалибрована по наблюдению {entry.source}: "
+            f"текущий блеск {entry.current_magnitude:+.1f}m, сдвиг модели "
+            f"{offset:+.1f}m")
 
 
 def select_bright(start: dt.datetime, end: dt.datetime,
@@ -78,11 +147,26 @@ def select_bright(start: dt.datetime, end: dt.datetime,
             r = sun.at(grid).observe(comet).distance().au
         except Exception:
             continue
-        m = estimate_magnitude(row, r, delta)
+        # Сначала грубый отбор по сырой модели — иначе калибровать пришлось бы
+        # все девятьсот комет каталога. Порог с запасом: сырая оценка бывает
+        # и завышенной, и заниженной.
+        raw = estimate_magnitude(row, r, delta)
+        if np.nanmin(raw) > limit + 6.0:
+            continue
+        offset, entry = calibrate(row)
+        m = raw + offset
         if np.nanmin(m) <= limit:
             rows.append({"designation": row["designation"],
                          "mag_min": float(np.nanmin(m)),
+                         "mag_raw_min": float(np.nanmin(raw)),
+                         "offset": offset,
+                         "observed": entry is not None,
+                         "magnitude_source": entry.source if entry else "",
+                         "observed_magnitude": (entry.current_magnitude
+                                                if entry else None),
                          "row": row})
+    if not rows:
+        return pd.DataFrame(columns=["designation", "mag_min", "row"])
     return pd.DataFrame(rows).sort_values("mag_min").reset_index(drop=True)
 
 
@@ -95,15 +179,17 @@ def _fmt_mag(m: float) -> str:
     return f"V={m:+.1f}m".replace(".", ",")
 
 
-def track(row, start: dt.datetime, end: dt.datetime, step_minutes: int = None):
-    """RA/Dec/блеск кометы на частой сетке."""
+def track(row, start: dt.datetime, end: dt.datetime, step_minutes: int = None,
+          offset: float | None = None):
+    """RA/Dec/блеск кометы на частой сетке. Блеск откалиброван по наблюдению."""
     step = cfg.COMET_STEP_MINUTES if step_minutes is None else step_minutes
     grid = ts_range(start, end, step)
     comet = _orbit(row)
     astro = earth().at(grid).observe(comet)
     ra, dec, distance = astro.radec()
     r = body("sun").at(grid).observe(comet).distance().au
-    mag = estimate_magnitude(row, r, distance.au)
+    shift = calibrate(row)[0] if offset is None else offset
+    mag = estimate_magnitude(row, r, distance.au, shift)
     return grid, ra.degrees, dec.degrees, mag, comet
 
 
@@ -152,7 +238,8 @@ def observability(grid, comet):
 
 
 def _approach_events(row, grid, ra, dec, mag, catalog, kind: str,
-                     limit_deg: float, describe, obs=None) -> list[Event]:
+                     limit_deg: float, describe, obs=None,
+                     brightness=None) -> list[Event]:
     """Локальные минимумы расстояния комета–объект каталога.
 
     Момент наибольшего сближения часто приходится на светлое время или на период,
@@ -167,6 +254,9 @@ def _approach_events(row, grid, ra, dec, mag, catalog, kind: str,
     ts = timescale()
     grid_tt = grid.tt
     alt_v, sun_v, obs_mask = obs if obs is not None else observability(grid, comet)
+    offset, entry = brightness if brightness is not None else calibrate(row)
+    magnitude_sources = (["MPC CometEls.txt (элементы)"]
+                         + ([entry.source + " (блеск)"] if entry else []))
 
     for _, obj in sel.iterrows():
         d = angular_distance_deg(ra, dec, obj.ra_degrees, obj.dec_degrees)
@@ -217,13 +307,15 @@ def _approach_events(row, grid, ra, dec, mag, catalog, kind: str,
                       f"{_direction_from_offsets(d_ra, d_dec)} {describe(obj)} "
                       f"в созвездии {const}"),
                 category=f"comet_{kind}",
-                confidence="средняя",
+                confidence="средняя" if entry is not None else "низкая",
                 computed=(f"минимум расстояния {sep_min * 60:.1f}′ в "
                           f"{to_msk(ts.tt_jd(tt_min)):%d.%m %H:%M} МСК; в календаре "
                           f"момент наблюдаемости, разделение {sep * 60:.1f}′; "
-                          f"наибольшая высота кометы (Москва/юг ЕЧР) {alt:.0f}°, Солнце {sun_alt:.0f}°"),
-                sources=["MPC CometEls.txt (элементы)", "Hipparcos / OpenNGC",
-                         "Skyfield/DE440s"],
+                          f"наибольшая высота кометы (Москва/юг ЕЧР) {alt:.0f}°, "
+                          f"Солнце {sun_alt:.0f}°; "
+                          + magnitude_note(entry, offset)),
+                sources=magnitude_sources + ["Hipparcos / OpenNGC",
+                                             "Skyfield/DE440s"],
                 precision="hour",
                 notes=("наблюдаемо из России" if visible
                        else "из России в эти сутки не наблюдается"),
@@ -231,7 +323,11 @@ def _approach_events(row, grid, ra, dec, mag, catalog, kind: str,
                       "alt": alt, "sun_alt": sun_alt, "visible": visible,
                       "object_mag": float(obj.magnitude if kind == "star" else obj.mag),
                       "object": f"HIP {int(obj.hip)}" if kind == "star" else obj.Name,
-                      "kind": kind},
+                      "kind": kind,
+                      "comet_mag": float(np.interp(t.tt, grid_tt, mag)),
+                      "magnitude_observed": entry is not None,
+                      "magnitude_source": entry.source if entry else "",
+                      "magnitude_offset": offset},
             ))
     return out
 
@@ -260,8 +356,16 @@ def _describe_dso(obj) -> str:
 
 
 def interesting(meta: dict) -> bool:
-    """Отбор в календарь: тесно + объект достаточно яркий + видно из Москвы."""
+    """Отбор в календарь: тесно, объект яркий, видно из России, блеск подтверждён.
+
+    Последнее условие появилось после разбора октябрьского выпуска: по одной
+    лишь модели MPC комета 65P/Gunn получила +10,6ᵐ при наблюдаемых 18,8ᵐ.
+    Событие с непроверенным блеском вводит читателя в заблуждение сильнее, чем
+    его отсутствие, поэтому такие строки остаются в протоколе.
+    """
     if not meta["visible"]:
+        return False
+    if not meta.get("magnitude_observed"):
         return False
     sep, mag = meta["sep_deg"], meta["object_mag"]
     if meta["kind"] == "star":
@@ -325,10 +429,11 @@ def milestones(start: dt.datetime, end: dt.datetime,
         row = item["row"]
         name = comet_name(row["designation"])
         comet = _orbit(row)
+        offset, entry = calibrate(row)
         astro = earth().at(grid).observe(comet)
         distance = astro.distance().au
         heliocentric = body("sun").at(grid).observe(comet).distance().au
-        magnitudes = estimate_magnitude(row, heliocentric, distance)
+        magnitudes = estimate_magnitude(row, heliocentric, distance, offset)
 
         # перигелий: минимум гелиоцентрического расстояния внутри месяца
         index = int(np.argmin(heliocentric))
@@ -343,9 +448,13 @@ def milestones(start: dt.datetime, end: dt.datetime,
                 category="comet_milestone", confidence="средняя",
                 rank="interesting",
                 computed=(f"минимум гелиоцентрического расстояния "
-                          f"{heliocentric[index]:.4f} а.е. по элементам MPC"),
-                sources=["MPC CometEls.txt", "Skyfield/DE440s"],
-                precision="hour", meta={"comet": name, "milestone": "perihelion"}))
+                          f"{heliocentric[index]:.4f} а.е. по элементам MPC; "
+                          + magnitude_note(entry, offset)),
+                sources=["MPC CometEls.txt", "Skyfield/DE440s"]
+                        + ([entry.source] if entry else []),
+                precision="hour",
+                meta={"comet": name, "milestone": "perihelion",
+                      "magnitude_observed": entry is not None}))
 
         # минимум геоцентрического расстояния
         index = int(np.argmin(distance))
@@ -422,11 +531,14 @@ def all_events(start: dt.datetime, end: dt.datetime, max_comets: int = 20):
     stars, dso = bright_stars(), deep_sky()
     found: list[Event] = []
     for row in selected:
-        grid, ra, dec, mag, comet = track(row, start, end)
+        brightness = calibrate(row)
+        grid, ra, dec, mag, comet = track(row, start, end, offset=brightness[0])
         obs = observability(grid, comet)
         found += _approach_events(row, grid, ra, dec, mag, stars, "star",
-                                  cfg.APPROACH_LIMIT_DEG, _describe_star, obs)
+                                  cfg.APPROACH_LIMIT_DEG, _describe_star, obs,
+                                  brightness)
         found += _approach_events(row, grid, ra, dec, mag, dso, "dso",
-                                  cfg.APPROACH_LIMIT_DEG, _describe_dso, obs)
+                                  cfg.APPROACH_LIMIT_DEG, _describe_dso, obs,
+                                  brightness)
     calendar = deduplicate([e for e in found if interesting(e.meta)])
     return calendar, found, bright
