@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "astrocalendar-studio"
-version = "1.1.0"
+version = "1.3.0"
 description = "Настольная система подготовки, проверки и визуализации астрономических календарей"
 readme = "README.md"
 requires-python = ">=3.11"
