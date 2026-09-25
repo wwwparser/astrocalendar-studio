@@ -101,9 +101,14 @@ def collect(start: dt.datetime, end: dt.datetime) -> tuple[list[Event], dict]:
     return events, extra
 
 
-def render_post(events: list[Event], year: int, month: int) -> str:
+def render_post(events: list[Event], year: int, month: int,
+                icons: bool = False) -> str:
+    """Готовый пост. `icons=True` заменяет общий маркер значком события."""
+    from .icons import decorate
+
     head = HEADER.format(month=MONTHS_NOM_CAP[month], year=year)
-    return head + "\n\n" + "\n".join(e.line() for e in events) + "\n"
+    lines = [decorate(e.line(), e) if icons else e.line() for e in events]
+    return head + "\n\n" + "\n".join(lines) + "\n"
 
 
 def load_source_list(year: int, month: int) -> list[dict]:

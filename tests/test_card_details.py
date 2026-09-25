@@ -183,3 +183,14 @@ def test_issue_lines_can_use_icons():
     assert issue.lines()[0].startswith("▪️")
     issue.icons = True
     assert issue.lines()[0].startswith("🪐")
+
+
+def test_render_post_accepts_the_icons_flag():
+    """Флаг CLI --icons должен доходить до рендера, а не падать на вызове."""
+    from astrocal.build import render_post
+
+    item = event("Сатурн в противостоянии с Солнцем")
+    plain = render_post([item], 2026, 10)
+    fancy = render_post([item], 2026, 10, icons=True)
+    assert "▪️" in plain
+    assert "🪐" in fancy and "▪️" not in fancy
