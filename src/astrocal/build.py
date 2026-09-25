@@ -6,7 +6,8 @@ import json
 
 from . import config as cfg
 from .core import Event
-from .events import (asteroid_occultations, asteroids, comets, eclipses, iss,
+from .events import (asteroid_occultations, asteroids, close_approaches,
+                     comets, eclipses, iss,
                      jupiter_moons, jupiter_phenomena, lunar_features, meteors,
                      moon, occultations, planets, seasons, spaceflight, titan,
                      visibility)
@@ -51,6 +52,11 @@ def collect(start: dt.datetime, end: dt.datetime) -> tuple[list[Event], dict]:
         events += asteroids.all_events(start, end)
     except Exception as exc:                       # CNEOS/Horizons могут не ответить
         extra["asteroids_error"] = str(exc)
+
+    try:                                           # яркие NEO на год вперёд
+        events += close_approaches.bright_events(start, end)
+    except Exception as exc:
+        extra["bright_neo_error"] = str(exc)
 
     try:
         occultation_events, occultation_report = asteroid_occultations.build(start, end)

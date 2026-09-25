@@ -43,8 +43,29 @@ def check_provenance(record, flags: list) -> None:
 # ------------------------------------------------------------------ NEO
 
 
+def check_bright_neo(record, flags: list) -> None:
+    """Прогноз блеска яркого объекта года: это не карточка пролёта.
+
+    Ни скорости, ни точного момента сближения у такой записи нет и быть не
+    должно — источник говорит только о блеске. Требовать от неё полей
+    карточки сближения бессмысленно, проверять есть что другое.
+    """
+    payload = record.payload or {}
+    peak = payload.get("peak_magnitude")
+    if peak is None or not (-5.0 <= peak <= 20.0):
+        _flag(flags, "REVIEW", "neo_magnitude",
+              f"прогноз максимума блеска {peak!r} вне разумных пределов")
+    distance_ld = payload.get("distance_ld")
+    if distance_ld is not None and not (0.0 < distance_ld < 2000.0):
+        _flag(flags, "REVIEW", "neo_distance",
+              f"расстояние {distance_ld} лунных расстояний неправдоподобно")
+
+
 def check_neo(record, flags: list) -> None:
     payload = record.payload or {}
+    if payload.get("bright_of_year"):
+        check_bright_neo(record, flags)
+        return
     distance_km = payload.get("distance_km")
     distance_ld = payload.get("distance_ld")
 
@@ -63,6 +84,19 @@ def check_neo(record, flags: list) -> None:
         _flag(flags, "WARN", "neo_velocity",
               f"относительная скорость {velocity!r} км/с вне разумных пределов "
               f"0,5…80 км/с")
+
+    ours = payload.get("magnitude_computed")
+    theirs = payload.get("feed_magnitude")
+    if ours is not None and theirs is not None:
+        difference = abs(float(ours) - float(theirs))
+        if difference > 1.5:
+            _flag(flags, "REVIEW", "neo_magnitude",
+                  f"наш расчёт блеска {ours:+.1f}m расходится с независимым "
+                  f"источником ({theirs:+.1f}m) на {difference:.1f}m")
+        elif difference > 0.5:
+            _flag(flags, "WARN", "neo_magnitude",
+                  f"блеск расходится с независимым источником на "
+                  f"{difference:.1f}m: {ours:+.1f}m против {theirs:+.1f}m")
 
     if payload.get("diameter_measured") is None:
         if payload.get("absolute_magnitude_H") is None:

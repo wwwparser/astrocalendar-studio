@@ -84,6 +84,10 @@ def rank_event(event: Event) -> str:
     if category == "iss":
         return "interesting" if event.confidence != "низкая" else "technical"
 
+    if category == "neo_bright":
+        # ранг уже посчитан по блеску в максимуме
+        return event.rank
+
     if category == "asteroid":
         if meta.get("distance_km"):                       # пролёт у Земли
             return "interesting" if meta.get("diameter_km", 0) >= 0.3 else "optional"

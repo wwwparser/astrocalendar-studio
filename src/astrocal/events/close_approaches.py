@@ -73,6 +73,9 @@ class CloseApproach:
     source_updated_at: str = ""
     rank: str = "optional"
     observability: dict = field(default_factory=dict)
+    # блеск из независимого источника: CNEOS его не даёт вовсе
+    feed_magnitude: float | None = None
+    feed_source: str = ""
 
     # ------------------------------------------------------------ идентичность
 
@@ -104,13 +107,22 @@ class CloseApproach:
     def size_km(self) -> float:
         return self.diameter_measured or self.diameter_estimate or 0.0
 
+    @property
+    def magnitude_difference(self) -> float | None:
+        """Расхождение нашего расчёта блеска с независимым источником."""
+        ours = (self.observability or {}).get("magnitude")
+        if ours is None or self.feed_magnitude is None:
+            return None
+        return float(ours) - float(self.feed_magnitude)
+
     def provenance(self) -> dict:
         return {"origin": "cneos", "source": self.source,
                 "source_updated_at": self.source_updated_at,
                 "diameter_provenance": ("измерен" if self.diameter_measured
                                         else f"оценка по H={self.absolute_magnitude_H} "
                                              f"и альбедо {cfg.NEO_ALBEDO}"),
-                "distance_range_au": [self.distance_min_au, self.distance_max_au]}
+                "distance_range_au": [self.distance_min_au, self.distance_max_au],
+                "magnitude_second_source": self.feed_source or None}
 
 
 # ------------------------------------------------------------------ получение
@@ -171,6 +183,27 @@ def approaches(start: dt.datetime, end: dt.datetime,
     }
     response = fetch(CAD_API, params=params, ttl_hours=12.0, use_cache=use_cache)
     return parse_payload(response.json(), response.fetched_at.isoformat())
+
+
+def attach_feed(items: list[CloseApproach], index=None) -> list[CloseApproach]:
+    """Проставить сближениям блеск из таблиц ван Бёйтенена.
+
+    Своего блеска у CNEOS нет, а наш расчёт через Horizons хорошо бы с чем-то
+    сверить. Недоступность источника здесь не ошибка: сближения останутся без
+    второго мнения, и только.
+    """
+    from ..neo_feeds import load
+
+    feed = index if index is not None else load()
+    if not feed.available:
+        return items
+    for item in items:
+        entry = feed.find(item.designation)
+        if entry is None:
+            continue
+        item.feed_magnitude = entry.closest_magnitude or entry.magnitude_today
+        item.feed_source = entry.source
+    return items
 
 
 # ------------------------------------------------------------------ значимость
@@ -367,6 +400,7 @@ def to_event(approach: CloseApproach) -> Event:
         rank=approach.rank,
         provenance=approach.provenance(),
         meta={"distance_km": approach.distance_km,
+              "feed_magnitude": approach.feed_magnitude,
               "distance_ld": approach.distance_ld,
               "h": approach.absolute_magnitude_H,
               "diameter_km": approach.size_km,
@@ -386,3 +420,79 @@ def build(start: dt.datetime, end: dt.datetime,
                                a.distance_ld))
     chosen = chosen[:limit or cfg.NEO_MAX_IN_CALENDAR]
     return sorted([to_event(item) for item in chosen], key=lambda e: e.when)
+
+
+# ------------------------------------------------------------------ яркие за год
+
+
+def bright_of_year(index=None, magnitude_limit: float | None = None) -> list:
+    """Околоземные астероиды, которые станут заметно ярче в ближайший год.
+
+    Месячный расчёт такого не покажет: максимум блеска объекта может прийтись
+    на месяц, до которого мы ещё не дошли, а знать о нём полезно заранее.
+    Отбор здесь по блеску — то есть по критерию наблюдателя, а не по размеру
+    камня.
+    """
+    from ..neo_feeds import load
+
+    feed = index if index is not None else load(tables=("bright",))
+    limit = AMATEUR_LIMIT if magnitude_limit is None else magnitude_limit
+    out = [entry for entry in feed.entries
+           if entry.table == "bright" and entry.peak_magnitude is not None
+           and entry.peak_magnitude <= limit]
+    return sorted(out, key=lambda entry: entry.peak_magnitude)
+
+
+def bright_rank(entry) -> str:
+    """Значимость яркого сближения: по блеску в максимуме."""
+    peak = entry.peak_magnitude
+    if peak is None:
+        return "optional"
+    if peak <= 10.0:            # доступно биноклю — событие года, а не месяца
+        return "must"
+    if peak <= 13.0:
+        return "interesting"
+    return "optional"
+
+
+def bright_to_event(entry) -> Event:
+    """Строка календаря о максимуме блеска околоземного астероида."""
+    peak = entry.peak_magnitude
+    when = entry.peak_when
+    distance = ""
+    if entry.closest_ld is not None:
+        distance = (f", ближайшая точка орбиты — {number(entry.closest_ld)} "
+                    f"расстояния Земля—Луна")
+    return Event(
+        when=when,
+        text=(f"Околоземный астероид {entry.designation} "
+              f"({entry.diameter_text}) в максимуме блеска "
+              f"{number(peak, 1, sign=True)}m{distance}"),
+        category="neo_bright",
+        confidence="средняя",
+        computed=(f"по таблице ярких околоземных объектов "
+                  f"{entry.source}: сегодня {entry.magnitude_today}m, "
+                  f"максимум {peak}m"
+                  + (f", наибольшее сближение {entry.closest_ld} LD "
+                     f"{entry.closest_date:%d.%m.%Y}" if entry.closest_date
+                     else "")),
+        sources=[entry.source, SOURCE],
+        precision="hour",
+        rank=bright_rank(entry),
+        provenance=entry.provenance(),
+        meta={"designation": entry.designation,
+              "peak_magnitude": peak,
+              "distance_ld": entry.closest_ld,
+              "bright_neo": True},
+    )
+
+
+def bright_events(start: dt.datetime, end: dt.datetime, index=None) -> list[Event]:
+    """Максимумы блеска ярких околоземных астероидов, попадающие в месяц."""
+    events = []
+    for entry in bright_of_year(index):
+        when = entry.peak_when
+        if when is None or not (start <= when < end):
+            continue
+        events.append(bright_to_event(entry))
+    return sorted(events, key=lambda event: event.when)

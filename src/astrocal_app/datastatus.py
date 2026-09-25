@@ -83,6 +83,9 @@ def sources() -> list[Source]:
                cache / "occ2026-iota.zip", 24 * 30),
         Source("cneos", "CNEOS (сближения NEO)", _latest(cache, "cad_*.json"),
                24 * 7, note="официальный список тесных сближений NASA/JPL"),
+        Source("neo_bright", "Блеск NEO (van Buitenen)",
+               _net_cache(_bright_url()), 24,
+               note="независимый источник к нашему расчёту блеска"),
         Source("tns", "TNS (новые и сверхновые)", _live("tns_transients_state.json"),
                24, note=_tns_note()),
         Source("mpc_live", "MPC: снимок списка комет",
@@ -98,6 +101,19 @@ def sources() -> list[Source]:
         Source("constellations", "Линии созвездий",
                cache / "constellationship.fab", None, refreshable=False),
     ]
+
+
+def _bright_url() -> str:
+    from astrocal.neo_feeds import BRIGHT_URL
+
+    return BRIGHT_URL
+
+
+def _net_cache(url: str) -> Path | None:
+    """Файл кэша сетевого слоя для страницы — по нему виден возраст данных."""
+    from astrocal.net import _cache_path, _key
+
+    return _cache_path(_key(url, None, None))
 
 
 def _live(name: str) -> Path | None:

@@ -34,15 +34,23 @@ def describe(approach: close_approaches.CloseApproach,
         f"Скорость: {number(approach.velocity_km_s)} км/с",
     ]
     if approach.absolute_magnitude_H is not None:
-        lines.append(f"H = {approach.absolute_magnitude_H:.1f}m, диаметр по альбедо "
+        lines.append(f"H = {number(approach.absolute_magnitude_H)}m, "
+                     f"диаметр по альбедо "
                      f"{close_approaches.ALBEDO_BRIGHT}…"
                      f"{close_approaches.ALBEDO_DARK}: "
                      f"{(approach.diameter_min or 0) * 1000:.0f}–"
                      f"{(approach.diameter_max or 0) * 1000:.0f} м")
+    if approach.feed_magnitude is not None:
+        lines.append(f"Блеск по таблице ван Бёйтенена: "
+                     f"{number(approach.feed_magnitude, 1, sign=True)}m")
     if sky.get("visible"):
         magnitude = sky.get("magnitude")
         if magnitude is not None:
-            lines.append(f"Ожидаемый блеск: {number(magnitude, 1, sign=True)}m")
+            lines.append(f"Наш расчёт блеска: {number(magnitude, 1, sign=True)}m")
+            difference = approach.magnitude_difference
+            if difference is not None and abs(difference) > 0.5:
+                lines.append(f"Расхождение источников: "
+                             f"{number(abs(difference))}m — проверить")
         lines.append(f"Максимальная высота в городе {sky['city']}: "
                      f"{sky['max_altitude_deg']:.0f}°")
         lines.append(f"Лучшее время: {sky['window_start']:%H:%M}–"
@@ -69,6 +77,9 @@ def describe(approach: close_approaches.CloseApproach,
         "diameter_estimate": approach.diameter_estimate,
         "diameter_measured": approach.diameter_measured,
         "source": approach.source,
+        "magnitude_computed": (sky or {}).get("magnitude"),
+        "feed_magnitude": approach.feed_magnitude,
+        "feed_source": approach.feed_source,
     }
     return ScheduledEvent(
         live_id=approach.live_id,
@@ -104,6 +115,14 @@ def check(days: float = 30.0, cities=None, use_cache: bool = True,
                     "new": 0, "total": 0}
 
     chosen = close_approaches.significant(items)
+
+    # второй источник по блеску: его отсутствие не мешает работе
+    from ..neo_feeds import load
+    try:
+        feed = load()
+        close_approaches.attach_feed(chosen, feed)
+    except Exception:                        # noqa: BLE001
+        feed = None
     records = []
     for index, approach in enumerate(chosen):
         if progress:
@@ -117,5 +136,61 @@ def check(days: float = 30.0, cities=None, use_cache: bool = True,
             except Exception as error:            # noqa: BLE001
                 sky = {"visible": False, "note": f"эфемерида недоступна: {error}"}
         records.append(describe(approach, sky))
+
+    records += bright_records(feed)
     return records, {"source": SOURCE, "status": "ок", "total": len(items),
                      "new": len(records)}
+
+
+def bright_records(feed=None) -> list[ScheduledEvent]:
+    """Яркие околоземные астероиды на год вперёд.
+
+    Это не сближения ближайших недель, а объекты, ради которых стоит заранее
+    освободить ночь: 1999 AN10 в августе 2027 года выйдет на +7,6m. Месячный
+    расчёт о них молчит до самого месяца события.
+    """
+    from ..neo_feeds import SOURCE as FEED_SOURCE
+
+    try:
+        entries = close_approaches.bright_of_year(feed)
+    except Exception:                        # noqa: BLE001
+        return []
+
+    out = []
+    for entry in entries:
+        when = entry.peak_when
+        if when is None:
+            continue
+        lines = [f"Размер: {entry.diameter_text}",
+                 f"Максимум блеска: "
+                 f"{number(entry.peak_magnitude, 1, sign=True)}m "
+                 f"около {when:%d.%m.%Y}"]
+        if entry.magnitude_today is not None:
+            lines.append(f"Сейчас: {number(entry.magnitude_today, 1, sign=True)}m")
+        if entry.closest_ld is not None and entry.closest_date is not None:
+            lines.append(f"Наибольшее сближение: {number(entry.closest_ld)} LD "
+                         f"{entry.closest_date:%d.%m.%Y}")
+        out.append(ScheduledEvent(
+            live_id=f"neo:bright:{entry.designation.strip()}",
+            kind=KIND_NEO,
+            title=f"{entry.designation} — максимум "
+                  f"{number(entry.peak_magnitude, 1, sign=True)}m",
+            summary=close_approaches.bright_to_event(entry).text,
+            lines=lines,
+            when=when,
+            magnitude=entry.peak_magnitude,
+            rank=close_approaches.bright_rank(entry),
+            payload={"designation": entry.designation,
+                     "diameter_text": entry.diameter_text,
+                     "peak_magnitude": entry.peak_magnitude,
+                     "feed_magnitude": entry.peak_magnitude,
+                     "closest_ld": entry.closest_ld,
+                     "distance_ld": entry.closest_ld,
+                     "distance_km": ((entry.closest_ld or 0)
+                                     * cfg.LUNAR_DISTANCE_KM) or None,
+                     "absolute_magnitude_H": entry.absolute_magnitude,
+                     "bright_of_year": True},
+            sources=[FEED_SOURCE],
+            provenance=entry.provenance(),
+        ))
+    return out

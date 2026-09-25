@@ -45,6 +45,7 @@ KINDS: tuple[Kind, ...] = (
     Kind("comet", "Кометы", "Малые тела"),
     Kind("asteroid", "Астероиды", "Малые тела"),
     Kind("neo", "Сближения с Землёй (NEO)", "Малые тела"),
+    Kind("bright_neo", "Яркие околоземные астероиды", "Малые тела"),
     Kind("asteroid_occultation", "Покрытия звёзд астероидами", "Малые тела"),
 
     Kind("meteors", "Метеорные потоки", "Метеоры"),
@@ -128,6 +129,9 @@ def classify(event) -> str:
 
     if category.startswith("comet"):
         return "comet"
+
+    if category == "neo_bright":
+        return "bright_neo"
 
     if category == "asteroid":
         return "neo" if meta.get("distance_km") else "asteroid"
