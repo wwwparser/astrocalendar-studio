@@ -118,7 +118,7 @@ def test_each_planet_has_its_own_icon():
 
 def test_planet_event_gets_the_planet_icon():
     assert icons.icon_for(event("Сатурн в противостоянии с Солнцем")) == "🪐"
-    assert icons.icon_for(event("Венера переходит к попятному движению")) == "🟡"
+    assert icons.icon_for(event("Венера переходит к попятному движению")) == "⚪"
 
 
 def test_moon_phase_icons_follow_the_phase():
