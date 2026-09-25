@@ -46,6 +46,7 @@ KIND_ICONS = {
     "planet_elongation": "🪐", "planet_station": "🪐",
     "planet_brilliancy": "🪐", "planet_visibility": "🪐",
     "jupiter_moons": "🔭", "jupiter_phenomena": "🔭", "titan": "🔭",
+    "jupiter_mutual": "🔭",
     "comet": "☄️", "asteroid": "💫", "neo": "☄", "bright_neo": "☄",
     "asteroid_occultation": "⭐",
     "meteors": "🌠",

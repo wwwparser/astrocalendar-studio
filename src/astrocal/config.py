@@ -94,6 +94,13 @@ OCC_PREDICTION_STALE_DAYS = 30.0    # прогноз старше — перес
 OCC_ORBIT_STALE_DAYS = 60.0         # орбита старше — предупредить
 OCC_PATH_SHIFT_ALERT_KM = 20.0      # сдвиг полосы, о котором сообщаем редактору
 
+# Взаимные явления галилеевых спутников. За месяц сезона их бывает под сотню,
+# и почти все — касания на несколько процентов диска. В календарь идут те, что
+# действительно видно: заметное перекрытие, наблюдаемое из России.
+JUPITER_MUTUAL_MIN_OBSCURATION = 0.25
+JUPITER_MUTUAL_MIN_MINUTES = 2.0
+JUPITER_MUTUAL_MAX_IN_CALENDAR = 8
+
 # Открытия новых комет
 COMET_DISCOVERY_MUST_MAG = 6.0          # прогнозируемый максимум ярче — событие
 COMET_DISCOVERY_INTERESTING_MAG = 10.0

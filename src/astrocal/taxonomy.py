@@ -40,6 +40,7 @@ KINDS: tuple[Kind, ...] = (
 
     Kind("jupiter_moons", "Галилеевы спутники", "Спутники планет"),
     Kind("jupiter_phenomena", "Прохождения и тени спутников", "Спутники планет"),
+    Kind("jupiter_mutual", "Взаимные явления спутников", "Спутники планет"),
     Kind("titan", "Титан", "Спутники планет"),
 
     Kind("comet", "Кометы", "Малые тела"),
@@ -124,6 +125,8 @@ def classify(event) -> str:
         return "jupiter_moons"
     if category == "jupiter_phenomena":
         return "jupiter_phenomena"
+    if category == "jupiter_mutual":
+        return "jupiter_mutual"
     if category == "saturn_moons":
         return "titan"
 

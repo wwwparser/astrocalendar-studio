@@ -8,7 +8,8 @@ from . import config as cfg
 from .core import Event
 from .events import (asteroid_occultations, asteroids, close_approaches,
                      comets, eclipses, iss,
-                     jupiter_moons, jupiter_phenomena, lunar_features, meteors,
+                     jupiter_moons, jupiter_mutual, jupiter_phenomena,
+                     lunar_features, meteors,
                      moon, occultations, planets, seasons, spaceflight, titan,
                      visibility)
 from .fmt import MONTHS_NOM_CAP, date_time_msk
@@ -41,6 +42,13 @@ def collect(start: dt.datetime, end: dt.datetime) -> tuple[list[Event], dict]:
         events += jupiter_phenomena.all_events(start, end)
     except Exception as exc:
         extra["jupiter_phenomena_error"] = str(exc)
+
+    try:                                       # взаимные явления спутников
+        mutual_events, mutual_all = jupiter_mutual.all_events(start, end)
+        events += mutual_events
+        extra["jupiter_mutual"] = mutual_all
+    except Exception as exc:
+        extra["jupiter_mutual_error"] = str(exc)
 
     try:
         events += lunar_features.all_events(start, end)
