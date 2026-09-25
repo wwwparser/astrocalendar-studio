@@ -1,0 +1,434 @@
+{
+  "year": 2026,
+  "source": "astrovert.ru",
+  "url": "https://astrovert.ru/journal/events/pokrytiya-asteroidami-v-2026-godu/",
+  "fetched_at": "2026-09-25T11:55:14.711270+00:00",
+  "criteria": "звёзды ярче +7m, астероиды крупнее 10 км, длительность больше 1 секунды, полоса над территорией России",
+  "purpose": "контрольный список для проверки полноты нашего расчёта; источником данных не является",
+  "events": [
+    {
+      "date": "03-02",
+      "time_msk": "16:10",
+      "asteroid_number": 6785,
+      "asteroid_name": "1990 VA7",
+      "asteroid_diameter_km": null,
+      "star": "HIP 46673",
+      "star_magnitude": 6,
+      "regions": [
+        "Д. Восток"
+      ],
+      "note": "",
+      "source_line": "02 марта, 16:10 — астероид (6785) 1990 VA7 покрывает звезду HIP 46673 (+6m), видимость: Д. Восток"
+    },
+    {
+      "date": "03-12",
+      "time_msk": "23:07",
+      "asteroid_number": 5368,
+      "asteroid_name": "Vitagliano",
+      "asteroid_diameter_km": null,
+      "star": "HIP 22990",
+      "star_magnitude": 7,
+      "regions": [
+        "Юг ЕЧР"
+      ],
+      "note": "",
+      "source_line": "12 марта, 23:07 — астероид (5368) Vitagliano покрывает звезду HIP 22990 (+7m), видимость: Юг ЕЧР"
+    },
+    {
+      "date": "03-15",
+      "time_msk": "18:02",
+      "asteroid_number": 76457,
+      "asteroid_name": "2000 FV38",
+      "asteroid_diameter_km": null,
+      "star": "HIP 44437",
+      "star_magnitude": 6,
+      "regions": [
+        "Алтай",
+        "З. Сибирь",
+        "Урал"
+      ],
+      "note": "",
+      "source_line": "15 марта, 18:02 — астероид (76457) 2000 FV38 покрывает звезду HIP 44437 (+6m), видимость: Алтай, З. Сибирь, Урал"
+    },
+    {
+      "date": "03-16",
+      "time_msk": "00:15",
+      "asteroid_number": 88227,
+      "asteroid_name": "2001 BU42",
+      "asteroid_diameter_km": null,
+      "star": "HIP 60821",
+      "star_magnitude": 6,
+      "regions": [
+        "Ц. Азия",
+        "Казахстан",
+        "ЕЧР"
+      ],
+      "note": "",
+      "source_line": "16 марта, 00:15 — астероид (88227) 2001 BU42 покрывает звезду HIP 60821 (+6m), видимость: Ц. Азия, Казахстан, ЕЧР"
+    },
+    {
+      "date": "04-03",
+      "time_msk": "14:34",
+      "asteroid_number": 28387,
+      "asteroid_name": "1999 JE79",
+      "asteroid_diameter_km": null,
+      "star": "HIP 61719",
+      "star_magnitude": 6,
+      "regions": [
+        "Д. Восток"
+      ],
+      "note": "",
+      "source_line": "3 аперля, 14:34 — астероид (28387) 1999 JE79 покрывает звезду HIP 61719 (+6m), видимость: Д. Восток"
+    },
+    {
+      "date": "04-14",
+      "time_msk": "23:11",
+      "asteroid_number": 29559,
+      "asteroid_name": "1998 DS4",
+      "asteroid_diameter_km": null,
+      "star": "HIP 88684",
+      "star_magnitude": 5,
+      "regions": [
+        "Д. Восток"
+      ],
+      "note": "",
+      "source_line": "14 апреля, 23:11 — астероид (29559) 1998 DS4 покрывает звезду HIP 88684 (+5m), видимость: Д. Восток"
+    },
+    {
+      "date": "04-29",
+      "time_msk": "20:20",
+      "asteroid_number": 4265,
+      "asteroid_name": "Kani",
+      "asteroid_diameter_km": null,
+      "star": "HIP 79692",
+      "star_magnitude": 6,
+      "regions": [
+        "Монголия",
+        "юг Сибири"
+      ],
+      "note": "",
+      "source_line": "29 апреля, 20:20 — астероид (4265) Kani покрывает звезду HIP 79692 (+6m), видимость: Монголия, юг Сибири"
+    },
+    {
+      "date": "05-03",
+      "time_msk": "16:40",
+      "asteroid_number": 146,
+      "asteroid_name": "Lucina",
+      "asteroid_diameter_km": 137,
+      "star": "HIP 34693",
+      "star_magnitude": 4,
+      "regions": [
+        "Китай",
+        "Монголия",
+        "Алтай"
+      ],
+      "note": "длительность до 5 сек!",
+      "source_line": "3 мая, 16:40 — астероид (146) Lucina (d=137км) покрывает звезду HIP 34693 (+4m), видимость: Китай, Монголия, Алтай (длительность до 5 сек!)"
+    },
+    {
+      "date": "05-24",
+      "time_msk": "21:56",
+      "asteroid_number": 1389,
+      "asteroid_name": "Onnie",
+      "asteroid_diameter_km": null,
+      "star": "HIP 89440",
+      "star_magnitude": 6,
+      "regions": [
+        "Д.Восток",
+        "Байкал",
+        "юг Сибири"
+      ],
+      "note": "",
+      "source_line": "24 мая, 21:56 — астероид (1389) Onnie покрывает звезду HIP 89440 (+6m), видимость: Д.Восток, Байкал, юг Сибири"
+    },
+    {
+      "date": "06-09",
+      "time_msk": "22:16",
+      "asteroid_number": 1247,
+      "asteroid_name": "Memoria",
+      "asteroid_diameter_km": null,
+      "star": "HIP 92491",
+      "star_magnitude": 6,
+      "regions": [
+        "Д.Восток",
+        "Монголия",
+        "Казахстан"
+      ],
+      "note": "",
+      "source_line": "9 июня, 22:16 — астероид (1247) Memoria покрывает звезду HIP 92491 (+6m), видимость: Д.Восток, Монголия, Казахстан"
+    },
+    {
+      "date": "07-28",
+      "time_msk": "16:59",
+      "asteroid_number": 23968,
+      "asteroid_name": "1998 XA13",
+      "asteroid_diameter_km": null,
+      "star": "HIP 65198",
+      "star_magnitude": 5,
+      "regions": [
+        "Китай",
+        "Монголия",
+        "Байкал"
+      ],
+      "note": "",
+      "source_line": "28 июля, 16:59 — астероид (23968) 1998 XA13 покрывает звезду HIP 65198 (+5m), видимость: Китай, Монголия, Байкал"
+    },
+    {
+      "date": "08-18",
+      "time_msk": "21:37",
+      "asteroid_number": 2316,
+      "asteroid_name": "Jo-Ann",
+      "asteroid_diameter_km": null,
+      "star": "TYC 6346-01566-1",
+      "star_magnitude": 7,
+      "regions": [
+        "Байкал",
+        "Монголия",
+        "Китай",
+        "Ц. Азия"
+      ],
+      "note": "",
+      "source_line": "18 августа, 21:37 — астероид (2316) Jo-Ann покрывает звезду TYC 6346-01566-1 (+7m), видимость: Байкал, Монголия, Китай, Ц. Азия"
+    },
+    {
+      "date": "08-29",
+      "time_msk": "00:18",
+      "asteroid_number": 14717,
+      "asteroid_name": "2000 CJ82",
+      "asteroid_diameter_km": null,
+      "star": "HIP 20901",
+      "star_magnitude": 5,
+      "regions": [
+        "ЕЧР",
+        "Урал",
+        "З. Сибирь"
+      ],
+      "note": "",
+      "source_line": "29 августа, 00:18 — астероид (14717) 2000 CJ82 покрывает звезду HIP 20901 (+5m), видимость: ЕЧР, Урал, З. Сибирь"
+    },
+    {
+      "date": "09-27",
+      "time_msk": "06:07",
+      "asteroid_number": 2721,
+      "asteroid_name": "Vsekhsvyatskij",
+      "asteroid_diameter_km": null,
+      "star": "HIP 23883",
+      "star_magnitude": 6,
+      "regions": [
+        "юг Европы",
+        "Сочи",
+        "Кавказ"
+      ],
+      "note": "",
+      "source_line": "27 сентября, 06:07 — астероид (2721) Vsekhsvyatskij покрывает звезду HIP 23883 (+6m), видимость: юг Европы, Сочи, Кавказ"
+    },
+    {
+      "date": "09-28",
+      "time_msk": "17:51",
+      "asteroid_number": 3726,
+      "asteroid_name": "Johnadams",
+      "asteroid_diameter_km": null,
+      "star": "HIP 7884",
+      "star_magnitude": 4,
+      "regions": [
+        "Камчатка",
+        "Сахалин",
+        "Приморский край"
+      ],
+      "note": "",
+      "source_line": "28 сентября, 17:51 — астероид (3726) Johnadams покрывает звезду HIP 7884 (+4m), видимость: Камчатка, Сахалин, Приморский край"
+    },
+    {
+      "date": "10-02",
+      "time_msk": "13:19",
+      "asteroid_number": 2945,
+      "asteroid_name": "Zanstra",
+      "asteroid_diameter_km": null,
+      "star": "HIP 94645",
+      "star_magnitude": 6,
+      "regions": [
+        "Д.Восток"
+      ],
+      "note": "",
+      "source_line": "2 октября, 13:19 — астероид (2945) Zanstra покрывает звезду HIP 94645 (+6m), видимость: Д.Восток"
+    },
+    {
+      "date": "10-17",
+      "time_msk": "22:52",
+      "asteroid_number": 60288,
+      "asteroid_name": "1999 XW114",
+      "asteroid_diameter_km": null,
+      "star": "HIP 30200",
+      "star_magnitude": 6,
+      "regions": [
+        "ЕЧР",
+        "Урал",
+        "Сибирь",
+        "Байкал"
+      ],
+      "note": "",
+      "source_line": "17 октября, 22:52 — астероид (60288) 1999 XW114 покрывает звезду HIP 30200 (+6m), видимость: ЕЧР, Урал, Сибирь, Байкал"
+    },
+    {
+      "date": "10-20",
+      "time_msk": "22:38",
+      "asteroid_number": 14723,
+      "asteroid_name": "2000 CB93",
+      "asteroid_diameter_km": null,
+      "star": "UCAC4 671-047470",
+      "star_magnitude": 6,
+      "regions": [
+        "Таймыр",
+        "З. Сибирь",
+        "Казахстан"
+      ],
+      "note": "",
+      "source_line": "20 октября, 22:38 — астероид (14723) 2000 CB93 покрывает звезду UCAC4 671-047470 (+6m), видимость: Таймыр, З. Сибирь, Казахстан"
+    },
+    {
+      "date": "11-04",
+      "time_msk": "13:30",
+      "asteroid_number": 9968,
+      "asteroid_name": "Serpe",
+      "asteroid_diameter_km": null,
+      "star": "HIP 114148",
+      "star_magnitude": 7,
+      "regions": [
+        "Таймыр",
+        "Д. Восток"
+      ],
+      "note": "",
+      "source_line": "4 ноября, 13:30 — астероид (9968) Serpe покрывает звезду HIP 114148 (+7m), видимость: Таймыр, Д. Восток"
+    },
+    {
+      "date": "11-06",
+      "time_msk": "04:02",
+      "asteroid_number": 337860,
+      "asteroid_name": "2001 VY128",
+      "asteroid_diameter_km": null,
+      "star": "HIP 29541",
+      "star_magnitude": 7,
+      "regions": [
+        "Ц. Азия",
+        "З. Казахстан",
+        "ЕЧР"
+      ],
+      "note": "",
+      "source_line": "6 ноября, 04:02 — астероид (337860) 2001 VY128 покрывает звезду HIP 29541 (+7m), видимость: Ц. Азия, З. Казахстан, ЕЧР"
+    },
+    {
+      "date": "11-27",
+      "time_msk": "00:33",
+      "asteroid_number": 1533,
+      "asteroid_name": "Saimaa",
+      "asteroid_diameter_km": null,
+      "star": "HIP 20660",
+      "star_magnitude": 7,
+      "regions": [
+        "В и З Сибирь",
+        "ЕЧР",
+        "Беларусь"
+      ],
+      "note": "",
+      "source_line": "27 ноября, 00:33 — астероид (1533) Saimaa покрывает звезду HIP 20660 (+7m), видимость: В и З Сибирь, ЕЧР, Беларусь"
+    },
+    {
+      "date": "11-27",
+      "time_msk": "01:53",
+      "asteroid_number": 1984,
+      "asteroid_name": "Fedynskij",
+      "asteroid_diameter_km": null,
+      "star": "HIP 25410",
+      "star_magnitude": 6,
+      "regions": [
+        "Таймыр",
+        "Шпицберген"
+      ],
+      "note": "",
+      "source_line": "27 ноября, 01:53 — астероид (1984) Fedynskij покрывает звезду HIP 25410 (+6m), видимость: Таймыр, Шпицберген"
+    },
+    {
+      "date": "11-28",
+      "time_msk": "22:03",
+      "asteroid_number": 76837,
+      "asteroid_name": "2000 SL316",
+      "asteroid_diameter_km": null,
+      "star": "HIP 27189",
+      "star_magnitude": 6,
+      "regions": [
+        "Владивосток",
+        "Китай",
+        "Монголия"
+      ],
+      "note": "",
+      "source_line": "28 ноября, 22:03 — астероид (76837) 2000 SL316 покрывает звезду HIP 27189 (+6m), видимость: Владивосток, Китай, Монголия"
+    },
+    {
+      "date": "12-03",
+      "time_msk": "16:40",
+      "asteroid_number": 1621,
+      "asteroid_name": "Druzhba",
+      "asteroid_diameter_km": null,
+      "star": "HIP 9809",
+      "star_magnitude": 5,
+      "regions": [
+        "Таймыр",
+        "З. Сибирь",
+        "Урал",
+        "ЕЧР"
+      ],
+      "note": "",
+      "source_line": "3 декабря, 16:40 — астероид (1621) Druzhba покрывает звезду HIP 9809 (+5m), видимость: Таймыр, З. Сибирь, Урал, ЕЧР"
+    },
+    {
+      "date": "12-12",
+      "time_msk": "16:16",
+      "asteroid_number": 2524,
+      "asteroid_name": "Budovicium",
+      "asteroid_diameter_km": null,
+      "star": "HIP 20087",
+      "star_magnitude": 5,
+      "regions": [
+        "Камчатка",
+        "Сахалин",
+        "Д.Восток",
+        "Китай",
+        "Монголия"
+      ],
+      "note": "",
+      "source_line": "12 декабря, 16:16 — астероид (2524) Budovicium покрывает звезду HIP 20087 (+5m), видимость: Камчатка, Сахалин, Д.Восток, Китай, Монголия"
+    },
+    {
+      "date": "12-13",
+      "time_msk": "02:41",
+      "asteroid_number": 587,
+      "asteroid_name": "Hypsipyle",
+      "asteroid_diameter_km": null,
+      "star": "HIP 20548",
+      "star_magnitude": 7,
+      "regions": [
+        "Казахстан",
+        "Юг ЕЧР",
+        "Европа"
+      ],
+      "note": "",
+      "source_line": "13 декабря, 02:41 — астероид (587) Hypsipyle покрывает звезду HIP 20548 (+7m), видимость: Казахстан, Юг ЕЧР, Европа"
+    },
+    {
+      "date": "12-20",
+      "time_msk": "03:28",
+      "asteroid_number": 2448,
+      "asteroid_name": "Sholokhov",
+      "asteroid_diameter_km": null,
+      "star": "HIP 68520",
+      "star_magnitude": 4,
+      "regions": [
+        "ЕЧР",
+        "Урал",
+        "З. Сибирь"
+      ],
+      "note": "",
+      "source_line": "20 декабря, 03:28 — астероид (2448) Sholokhov покрывает звезду HIP 68520 (+4m), видимость: ЕЧР, Урал, З. Сибирь"
+    }
+  ]
+}

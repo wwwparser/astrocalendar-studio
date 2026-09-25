@@ -600,3 +600,109 @@ def record_for(candidate: Candidate, result: dict, cities=None,
         feed_shift_hours=result.get("feed_shift_hours"),
         axis_miss_km=result.get("axis_miss_km", float("nan")),
     )
+
+
+# ------------------------------------------------------------------ полнота
+
+
+def control_list(year: int) -> dict:
+    """Контрольный список покрытий над Россией на год.
+
+    Ведут его наблюдатели (astrovert.ru), собирается скриптом
+    `scripts/fetch_control_occultations.py`. Это не источник данных — свои
+    события мы считаем сами. Это эталон полноты: если заметное покрытие есть
+    у наблюдателей, а у нас его нет, надо понять почему.
+    """
+    import json
+
+    path = cfg.DATA / f"control_occultations_{year}.json"
+    if not path.exists():
+        return {"year": year, "events": [], "missing_file": str(path)}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as error:
+        return {"year": year, "events": [], "error": str(error)}
+
+
+def _our_number(item) -> int | None:
+    """Номер астероида и из события календаря, и из полной карточки."""
+    number = getattr(item, "asteroid_number", None)
+    if number is not None:
+        return int(number)
+    meta = getattr(item, "meta", None) or {}
+    value = meta.get("asteroid")
+    return int(value) if value is not None else None
+
+
+def _our_date(item):
+    when = getattr(item, "event_local", None) or getattr(item, "when", None)
+    return when.date() if when is not None else None
+
+
+def compare_with_control(items: list, year: int, month: int | None = None,
+                         day_tolerance: int = 1) -> dict:
+    """Что из контрольного списка мы нашли, а что потеряли.
+
+    Совпадением считается тот же астероид в пределах `day_tolerance` суток:
+    пересчёт по свежей орбите законно сдвигает момент на часы, и требовать
+    совпадения минут было бы неправильно.
+    """
+    import datetime as dt
+
+    control = control_list(year)
+    expected = control.get("events", [])
+    if month is not None:
+        expected = [e for e in expected if int(e["date"][:2]) == month]
+
+    ours = [(item, _our_number(item), _our_date(item)) for item in items]
+    matched, missing = [], []
+
+    for entry in expected:
+        month_number, day = (int(part) for part in entry["date"].split("-"))
+        control_date = dt.date(year, month_number, day)
+        found = None
+        for item, number, when in ours:
+            if number != entry["asteroid_number"] or when is None:
+                continue
+            if abs((when - control_date).days) <= day_tolerance:
+                found = item
+                break
+        if found is not None:
+            matched.append({"control": entry, "ours": found})
+        else:
+            missing.append(entry)
+
+    numbers = {entry["asteroid_number"] for entry in expected}
+    extra = [item for item, number, _when in ours if number not in numbers]
+
+    return {"year": year, "month": month, "source": control.get("url", ""),
+            "expected": len(expected), "matched": matched, "missing": missing,
+            "extra": extra,
+            "coverage": (len(matched) / len(expected)) if expected else None}
+
+
+def describe_comparison(result: dict) -> str:
+    """Человеко-читаемый итог сверки — для отчёта и командной строки."""
+    lines = []
+    total = result["expected"]
+    if not total:
+        return ("Контрольный список пуст: соберите его командой "
+                "python scripts/fetch_control_occultations.py")
+    lines.append(f"Контрольный список: {total} событий, "
+                 f"найдено {len(result['matched'])}, "
+                 f"не найдено {len(result['missing'])}")
+    for record in result["matched"]:
+        entry = record["control"]
+        ours = record["ours"]
+        when = _our_date(ours)
+        lines.append(f"  ✓ ({entry['asteroid_number']}) {entry['asteroid_name']} "
+                     f"{entry['date']} {entry['time_msk']} — у нас {when}")
+    for entry in result["missing"]:
+        lines.append(f"  ✕ ({entry['asteroid_number']}) {entry['asteroid_name']} "
+                     f"{entry['date']} {entry['time_msk']}, звезда "
+                     f"{entry['star']} (+{entry['star_magnitude']}m), "
+                     f"видимость: {', '.join(entry['regions'])}")
+    if result["extra"]:
+        lines.append(f"  Сверх списка у нас {len(result['extra'])} событий — "
+                     f"это нормально: список ограничен яркими звёздами")
+    return "\n".join(lines)
