@@ -18,7 +18,8 @@ from __future__ import annotations
 import datetime as dt
 
 from ..core import Event, body, constellation_at, earth, observer, to_msk, ts_range
-from ..fmt import magnitude, ru_constellation
+from ..apparent import planet_label
+from ..fmt import ru_constellation
 
 PLANET_GEN = {
     "mercury": "Меркурия", "venus": "Венеры", "mars": "Марса", "jupiter": "Юпитера",
@@ -141,7 +142,7 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
                     out.append(Event(
                         when=when,
                         text=(f"{kind} {slot_ru} видимости {PLANET_GEN[name]} "
-                              f"({magnitude(planet_magnitude(name, t))}) "
+                              f"({planet_label(name, t)}) "
                               f"в созвездии {const}"),
                         category="visibility",
                         confidence="средняя",

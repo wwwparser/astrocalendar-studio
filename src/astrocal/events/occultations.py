@@ -23,7 +23,8 @@ from skyfield.framelib import itrs
 
 from ..core import (Event, body, constellation_at, earth, refine_minimum,
                     separation_deg, timescale, to_msk, ts_range)
-from ..fmt import magnitude, phase_fraction, ru_constellation
+from ..apparent import moon_label, planet_label
+from ..fmt import magnitude, ru_constellation
 from ..geo import RU_REGIONS, WORLD_REGIONS, bounds, describe, make_grid, region_coverage
 
 MOON_RADIUS_KM = 1737.4
@@ -300,7 +301,8 @@ def build_stars(start: dt.datetime, end: dt.datetime):
         daytime = daytime_over_russia(band, lat, lon, mask, ru)
 
         text = (f"Покрытие {label} ({magnitude(cand['mag'])}) Луной "
-                f"({phase_fraction(frac, waxing)}) в созвездии {const}, {where}")
+                f"({moon_label(cand['t'], frac, waxing)}) в созвездии {const}, "
+                f"{where}")
 
         extent = bounds(lat, lon, mask)
         events.append(Event(
@@ -346,8 +348,8 @@ def build(start: dt.datetime, end: dt.datetime):
 
         daytime = daytime_over_russia(band, lat, lon, mask, ru)
 
-        text = (f"Покрытие {PLANET_GEN[name]} ({magnitude(mag)}) Луной "
-                f"({phase_fraction(frac, waxing)}) {where}")
+        text = (f"Покрытие {PLANET_GEN[name]} ({planet_label(name, t, mag)}) "
+                f"Луной ({moon_label(t, frac, waxing)}) {where}")
 
         extent = bounds(lat, lon, mask)
         events.append(Event(

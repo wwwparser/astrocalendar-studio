@@ -8,7 +8,8 @@ from skyfield import almanac
 
 from ..core import (Event, body, constellation_at, earth, local_minima, planets,
                     refine_minimum, separation_deg, timescale, to_msk, ts_range)
-from ..fmt import angle_deg, distance_km, magnitude, phase_fraction, ru_constellation
+from ..apparent import moon_label, planet_label
+from ..fmt import angle_deg, distance_km, ru_constellation
 
 # Формулировки как в AstroAlert: "в фазе новолуние", но "в фазе последней четверти"
 PHASE_NAMES = {
@@ -45,7 +46,8 @@ def phases(start: dt.datetime, end: dt.datetime) -> list[Event]:
     for t, w in zip(times, which):
         out.append(Event(
             when=to_msk(t),
-            text=f"Луна в фазе {PHASE_NAMES[int(w)]} в созвездии {_moon_constellation(t)}",
+            text=(f"Луна в фазе {PHASE_NAMES[int(w)]} "
+                  f"в созвездии {_moon_constellation(t)}"),
             category="moon",
             computed=("almanac.moon_phases по DE440s, точный момент "
                       f"{t.utc_strftime('%Y-%m-%d %H:%M:%S UTC')}"),
@@ -80,7 +82,7 @@ def apsides(start: dt.datetime, end: dt.datetime) -> list[Event]:
         km = dist_at(tt)
         out.append(Event(
             when=when,
-            text=(f"Луна ({phase_fraction(frac, waxing)}) в "
+            text=(f"Луна ({moon_label(t, frac, waxing)}) в "
                   f"{'перигее' if is_min else 'апогее'} своей орбиты "
                   f"на расстоянии {distance_km(km)} км от Земли"),
             category="moon",
@@ -140,9 +142,10 @@ def conjunctions_with_planets(start: dt.datetime, end: dt.datetime,
                 earth().at(t).observe(target).apparent()))
             out.append(Event(
                 when=when,
-                text=(f"Луна ({phase_fraction(frac, waxing)}) проходит в {angle_deg(d)} "
-                      f"{direction(t, moon, target)} {PLANET_GEN[name]} "
-                      f"({magnitude(mag)}) в созвездии {const}"),
+                text=(f"Луна ({moon_label(t, frac, waxing)}) проходит в "
+                      f"{angle_deg(d)} {direction(t, moon, target)} "
+                      f"{PLANET_GEN[name]} ({planet_label(name, t, mag)}) "
+                      f"в созвездии {const}"),
                 category="moon",
                 computed=f"минимум геоцентрического расстояния Луна–{name}: {d:.3f}°",
                 sources=["Skyfield/DE440s"],
@@ -207,7 +210,7 @@ def conjunctions_with_stars(start: dt.datetime, end: dt.datetime,
                 earth().at(t).observe(target).apparent()))
             out.append(Event(
                 when=when,
-                text=(f"Луна ({phase_fraction(frac, waxing)}) проходит в "
+                text=(f"Луна ({moon_label(t, frac, waxing)}) проходит в "
                       f"{angle_deg(best)} {direction(t, body('moon'), target)} "
                       f"{label} в созвездии {const}"),
                 category="moon",
@@ -230,7 +233,7 @@ def conjunctions_with_deep_sky(start: dt.datetime, end: dt.datetime,
     """
     from skyfield.api import Star
 
-    from ..catalogs import angular_distance_deg, deep_sky
+    from ..catalogs import angular_distance_deg, deep_sky, dso_common_name
 
     ts = timescale()
     grid = ts_range(start - dt.timedelta(hours=12), end + dt.timedelta(hours=12), 30)
@@ -269,15 +272,15 @@ def conjunctions_with_deep_sky(start: dt.datetime, end: dt.datetime,
             frac, waxing = illum_and_waxing(t)
             label = obj.messier if isinstance(obj.messier, str) and obj.messier \
                 else obj.Name
-            common = (obj.common or "").split(",")[0].strip()
+            common = dso_common_name(obj.messier, obj.Name, obj.common)
             if common:
-                label = f'{label} ("{common}")'
+                label = f"{label} {common}"
             mag = f"V={obj.mag:+.1f}m".replace(".", ",")
             const = ru_constellation(constellation_at()(
                 earth().at(t).observe(target).apparent()))
             out.append(Event(
                 when=when,
-                text=(f"Луна ({phase_fraction(frac, waxing)}) проходит в "
+                text=(f"Луна ({moon_label(t, frac, waxing)}) проходит в "
                       f"{angle_deg(best)} {direction(t, body('moon'), target)} "
                       f"{obj.type_gen} {label} ({mag}) в созвездии {const}"),
                 category="moon",

@@ -15,6 +15,7 @@ import datetime as dt
 import numpy as np
 
 from ..core import Event, body, constellation_at, earth, observer, timescale
+from ..apparent import planet_label
 from ..fmt import magnitude, ru_constellation
 from ..horizons import CODES, query, rows
 
@@ -39,7 +40,6 @@ def _series(code: str, start: dt.datetime, end: dt.datetime, step: str = "20m"):
 
 def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
     from ..config import MSK
-    from ..magnitudes import planet_magnitude
 
     pad_start = start - dt.timedelta(days=1)
     pad_end = end + dt.timedelta(days=1)
@@ -96,12 +96,37 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
             when=when,
             text=(f"Спутник Титан ({magnitude(TITAN_MAG)}) расположен "
                   f"{'севернее' if north else 'южнее'} Сатурна "
-                  f"({magnitude(planet_magnitude('saturn', t))}) в созвездии {const}"),
+                  f"({planet_label('saturn', t)}) в {limb_text(sep, t)}, "
+                  f"созвездие {const}"),
             category="saturn_moons",
-            computed=(f"смена знака ΔRA·cosδ Титан–Сатурн; разделение {sep:.0f}″, "
+            computed=(f"смена знака ΔRA·cosδ Титан–Сатурн; разделение от центра "
+                      f"диска {sep:.0f}″, от края диска "
+                      f"{sep - saturn_radius_arcsec(t):.0f}″, "
                       f"Δ по склонению {y[i]:+.0f}″; "
                       f"высота Сатурна из Москвы {alt:.0f}°"),
             sources=["JPL Horizons (sat-эфемериды)", "Skyfield/DE440s (Сатурн, видимость)"],
             precision="hour",
         ))
     return out
+
+
+def saturn_radius_arcsec(t) -> float:
+    """Видимый радиус диска Сатурна без колец, угловые секунды."""
+    from ..apparent import angular_diameter_arcsec
+
+    return angular_diameter_arcsec("saturn", t) / 2.0
+
+
+def limb_text(separation_arcsec: float, t) -> str:
+    """«19″ от края диска» — наблюдателю важно расстояние до лимба, а не до центра.
+
+    Диск Сатурна занимает около двадцати угловых секунд, и при разделении в
+    29″ Титан стоит от края всего в девяти: расстояние от центра эту картину
+    передаёт плохо.
+    """
+    from ..fmt import number
+
+    limb = separation_arcsec - saturn_radius_arcsec(t)
+    if limb <= 0:
+        return "проекции на диск планеты"
+    return f"{number(limb)}″ от края диска"

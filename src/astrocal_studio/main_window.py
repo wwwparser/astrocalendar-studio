@@ -138,6 +138,7 @@ class MainWindow(QMainWindow):
         self.preview.save_requested.connect(self._save_publication)
         self.preview.send_requested.connect(self._send_to_telegram)
         self.preview.copied.connect(self.set_status)
+        self.preview.icons_toggled.connect(self._toggle_icons)
 
         self.qa_panel.open_report_requested.connect(self._open_qa_report)
         self.qa_panel.recheck_requested.connect(lambda: self.calculate(True))
@@ -293,6 +294,12 @@ class MainWindow(QMainWindow):
         self.issue.enabled_ranks = self.parameters.enabled_ranks()
         self.issue.primary_city = self.parameters.city_key
         self.table.set_items(self.issue.visible_events())
+        self.update_preview()
+
+    def _toggle_icons(self, enabled: bool) -> None:
+        if self.issue is None:
+            return
+        self.issue.icons = bool(enabled)
         self.update_preview()
 
     def update_preview(self) -> None:

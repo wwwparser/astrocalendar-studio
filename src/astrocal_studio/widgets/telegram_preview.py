@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QPushButton,
+from PySide6.QtWidgets import (QCheckBox,QFileDialog, QHBoxLayout, QLabel, QPushButton,
                                QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
 
 from astrocal.telegram import TELEGRAM_LIMIT, Publication
@@ -39,6 +39,7 @@ class TelegramPreview(QWidget):
     """Предпросмотр, счётчик символов, копирование и сохранение."""
 
     copied = Signal(str)
+    icons_toggled = Signal(bool)
     save_requested = Signal(str)
     send_requested = Signal()
 
@@ -61,6 +62,15 @@ class TelegramPreview(QWidget):
         self.counter = QLabel("0 / 4096")
         header.addWidget(self.counter)
         layout.addLayout(header)
+
+        # Значки вместо общего маркера ▪️: пост на полсотни строк иначе
+        # читается как сплошная стена
+        self.icons_box = QCheckBox("Значки событий вместо ▪️")
+        self.icons_box.setToolTip("Планетам — свои символы, метеорам, кометам "
+                                  "и покрытиям — свои")
+        self.icons_box.stateChanged.connect(
+            lambda _state: self.icons_toggled.emit(self.icons_box.isChecked()))
+        layout.addWidget(self.icons_box)
 
         self.notice = QLabel("")
         self.notice.setObjectName("Muted")

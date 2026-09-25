@@ -205,7 +205,7 @@ def librations(start: dt.datetime, end: dt.datetime) -> list[Event]:
                       f"({series[index]:.1f}°), видны {features}"),
                 category="lunar_feature",
                 confidence="высокая",
-                rank="optional",
+                rank="interesting",
                 computed=(f"максимум либрации по "
                           f"{'долготе' if axis == 0 else 'широте'}: "
                           f"{longitude_libration:+.2f}° / {latitude_libration:+.2f}°; "

@@ -8,7 +8,9 @@ import numpy as np
 
 from ..core import (Event, body, constellation_at, earth, find_zero, local_minima,
                     refine_minimum, separation_deg, timescale, to_msk, ts_range)
-from ..fmt import PLANETS_RU, angle_deg, magnitude, ru_constellation
+from ..apparent import planet_label
+from ..fmt import PLANETS_RU, angle_deg, ru_constellation
+from ..magnitudes import planet_magnitude
 
 OUTER = ("mars", "jupiter", "saturn", "uranus", "neptune")
 INNER = ("mercury", "venus")
@@ -69,7 +71,6 @@ def stations(start: dt.datetime, end: dt.datetime) -> list[Event]:
 
 def solar_configurations(start: dt.datetime, end: dt.datetime) -> list[Event]:
     """Противостояния и соединения внешних планет, элонгации внутренних."""
-    from ..magnitudes import planet_magnitude
 
     ts = timescale()
     sun = body("sun")
@@ -103,7 +104,7 @@ def solar_configurations(start: dt.datetime, end: dt.datetime) -> list[Event]:
             kind = "в противостоянии с Солнцем" if crossing_opp else "в соединении с Солнцем"
             out.append(Event(
                 when=when,
-                text=(f"{RU_NOM[name]} ({magnitude(planet_magnitude(name, t))}) "
+                text=(f"{RU_NOM[name]} ({planet_label(name, t)}) "
                       f"{kind} в созвездии {const}"),
                 category="planet",
                 computed=("разность видимых геоцентрических эклиптических долгот "
@@ -161,7 +162,7 @@ def solar_configurations(start: dt.datetime, end: dt.datetime) -> list[Event]:
             west = ((lon_p - lon_s + 360.0) % 360.0) > 180.0
             out.append(Event(
                 when=when,
-                text=(f"{RU_NOM[name]} ({magnitude(planet_magnitude(name, t))}) "
+                text=(f"{RU_NOM[name]} ({planet_label(name, t)}) "
                       f"в наибольшей {'западной' if west else 'восточной'} элонгации "
                       f"{e:.0f}° от Солнца, {'утренняя' if west else 'вечерняя'} видимость"),
                 category="planet",
@@ -182,7 +183,6 @@ def mutual_approaches(start: dt.datetime, end: dt.datetime,
     реально видно из Москвы, — при условии, что сближение к тому времени ещё в
     силе.
     """
-    from ..magnitudes import planet_magnitude
     from ..core import observer
     from .moon import direction
 
@@ -231,9 +231,9 @@ def mutual_approaches(start: dt.datetime, end: dt.datetime,
                 earth().at(t).observe(a).apparent()))
             out.append(Event(
                 when=when,
-                text=(f"{RU_NOM[a_name]} ({magnitude(planet_magnitude(a_name, t))}) "
+                text=(f"{RU_NOM[a_name]} ({planet_label(a_name, t)}) "
                       f"проходит в {angle_deg(d)} {direction(t, a, b)} "
-                      f"{RU_GEN[b_name]} ({magnitude(planet_magnitude(b_name, t))}) "
+                      f"{RU_GEN[b_name]} ({planet_label(b_name, t)}) "
                       f"в созвездии {const}"),
                 category="planet",
                 computed=(f"минимум расстояния {a_name}–{b_name}: {sep_min:.3f}° в "
@@ -253,7 +253,6 @@ def greatest_brilliancy(start: dt.datetime, end: dt.datetime) -> list[Event]:
     где произведение фазы на видимый диаметр наибольшее. Обзорные календари
     это событие публикуют, поэтому считаем его отдельно.
     """
-    from ..magnitudes import planet_magnitude
 
     ts = timescale()
     grid = ts_range(start - dt.timedelta(days=3), end + dt.timedelta(days=3), 180)
@@ -281,7 +280,7 @@ def greatest_brilliancy(start: dt.datetime, end: dt.datetime) -> list[Event]:
             out.append(Event(
                 when=when,
                 text=(f"{RU_NOM[name]} в максимальном блеске "
-                      f"({magnitude(negative(tt))}) в созвездии {const}"),
+                      f"({planet_label(name, ts.tt_jd(tt), negative(tt))}) в созвездии {const}"),
                 category="planet",
                 computed=(f"минимум звёздной величины по модели Mallama 2018: "
                           f"{negative(tt):.2f}m; элонгация {elongation:.0f}°"),

@@ -191,6 +191,22 @@ def analyse(candidate: Candidate, window_hours: float = 26.0) -> dict | None:
     }
 
 
+def star_constellation(ra_deg: float, dec_deg: float) -> str:
+    """Созвездие, в котором находится покрываемая звезда."""
+    from skyfield.api import Star
+
+    from ..core import constellation_at, earth, timescale
+    from ..fmt import ru_constellation
+
+    try:
+        t = timescale().from_datetime(dt.datetime.now(dt.timezone.utc))
+        star = Star(ra_hours=ra_deg / 15.0, dec_degrees=dec_deg)
+        return ru_constellation(constellation_at()(
+            earth().at(t).observe(star).apparent()))
+    except Exception:                            # noqa: BLE001
+        return ""
+
+
 def sun_altitude(lat: float, lon: float, when: dt.datetime) -> float:
     """Высота Солнца в точке полосы — покрытие на дневном небе не наблюдают."""
     from skyfield.api import wgs84
@@ -243,17 +259,30 @@ def build(start: dt.datetime, end: dt.datetime, star_mag_limit: float = 6.0,
                 continue
         c = candidate
         reliable = bool(result["regions_within_sigma"])
-        # запятая как десятичный разделитель — только в числах, не в имени звезды
-        star_mag = f"V={c.star_mag:+.1f}m".replace(".", ",")
-        drop = (", падение блеска "
-                + f"{c.magnitude_drop:.1f}".replace(".", ",") + "ᵐ"
+        # Наблюдателю нужны все пять величин: чем покрывается, что покрывается,
+        # где на небе это искать, насколько провалится блеск и сколько времени
+        # есть на съёмку. Раньше в строке были только две из них.
+        from ..fmt import number
+
+        star_mag = f"V={number(c.star_mag, 1, sign=True)}m"
+        asteroid_mag = (f" ({number(c.asteroid_mag, 1, sign=True)}m)"
+                        if np.isfinite(c.asteroid_mag) else "")
+        drop = (", падение блеска " + number(c.magnitude_drop) + "ᵐ"
                 if np.isfinite(c.magnitude_drop) else "")
+        duration = (", максимум " + number(c.max_duration_s) + " с"
+                    if np.isfinite(c.max_duration_s) else "")
+        width = (f", полоса шириной {c.diameter_km:.0f} км — "
+                 if np.isfinite(c.diameter_km) and c.diameter_km >= 1
+                 else ", полоса — ")
+        constellation = star_constellation(c.star_ra_deg, c.star_dec_deg)
+        where = f" в созвездии {constellation}" if constellation else ""
         events.append(Event(
             when=when,
-            text=(f"Астероид ({c.asteroid_number}) {c.asteroid_name} "
-                  f"покрывает звезду {c.star_id} ({star_mag})"
-                  f"{drop}, полоса проходит через "
-                  f"{', '.join(result['regions'][:4])}"),
+            text=(f"Астероид ({c.asteroid_number}) {c.asteroid_name}"
+                  f"{asteroid_mag} покрывает звезду {c.star_id} ({star_mag})"
+                  f"{where}{drop}{duration}"
+                  f"{width}"
+                  f"{', '.join(result['regions'])}"),
             category="asteroid_occultation",
             confidence="средняя" if reliable else "низкая",
             computed=(
@@ -275,7 +304,12 @@ def build(start: dt.datetime, end: dt.datetime, star_mag_limit: float = 6.0,
                    "при сдвиге полосы на заявленную ошибку она уходит с территории "
                    "России — событие ненадёжно"),
             meta={"asteroid": c.asteroid_number, "star": c.star_id,
-                  "sigma_km": c.sigma_km, "path": result["path"]},
+                  "sigma_km": c.sigma_km, "path": result["path"],
+                  "star_mag": c.star_mag, "asteroid_mag": c.asteroid_mag,
+                  "magnitude_drop": c.magnitude_drop,
+                  "duration_s": c.max_duration_s,
+                  "path_width_km": c.diameter_km,
+                  "constellation": constellation},
         ))
     return _deduplicate(events), report
 

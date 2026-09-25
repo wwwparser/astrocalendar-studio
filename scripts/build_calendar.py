@@ -4,6 +4,7 @@
     python scripts/build_calendar.py 2026 9          # конкретный месяц
     python scripts/build_calendar.py 2026 9 --no-horizons   # без обращения к сети
     python scripts/build_calendar.py 2026 9 --all-ranks     # публиковать всё
+    python scripts/build_calendar.py 2026 9 --icons         # значки вместо ▪️
 
 На выходе три файла:
 
@@ -36,6 +37,7 @@ def main(argv: list[str]) -> int:
     args = [a for a in argv if not a.startswith("--")]
     use_horizons = "--no-horizons" not in argv
     all_ranks = "--all-ranks" in argv
+    icons = "--icons" in argv
     year = int(args[0]) if args else cfg.YEAR
     month = int(args[1]) if len(args) > 1 else cfg.MONTH
 
@@ -64,7 +66,7 @@ def main(argv: list[str]) -> int:
     out_protocol = cfg.OUT / f"protocol_{year:04d}-{month:02d}.md"
     out_qa = cfg.OUT / f"QA_REPORT_{year:04d}-{month:02d}.md"
 
-    out_post.write_text(render_post(published, year, month), encoding="utf-8")
+    out_post.write_text(render_post(published, year, month, icons=icons), encoding="utf-8")
     out_protocol.write_text(render_protocol(events, extra, year, month, checks),
                             encoding="utf-8")
     out_qa.write_text(render_qa_report(events, published, extra, result, year, month),

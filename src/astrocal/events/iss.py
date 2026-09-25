@@ -24,10 +24,12 @@ from ..fmt import MONTHS_GEN
 # (i=41.5°) севернее 50° поднимается совсем низко — её смотрят с юга страны.
 STATIONS = {
     25544: {"label": "МКС", "cache": "iss_tle.txt", "min_alt": 20.0,
-            "lat": 55.76, "lon": 37.62, "where": "над Европейской частью России"},
+            "lat": 55.76, "lon": 37.62, "where": "над Европейской частью России",
+            "site": "Москва"},
     48274: {"label": "ККС", "cache": "css_tle.txt", "min_alt": 15.0,
             "lat": 47.24, "lon": 39.71,
-            "where": "над югом Европейской части России"},
+            "where": "над югом Европейской части России",
+            "site": "Ростов-на-Дону"},
 }
 TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?CATNR={catnr}&FORMAT=tle"
 
@@ -116,6 +118,7 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
     out: list[Event] = []
     for catnr, station in STATIONS.items():
         label, where = station["label"], station["where"]
+        site = station.get("site", "опорная точка")
         sat = load_tle(catnr)
         if sat is None:
             continue
@@ -146,7 +149,7 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
                         f"пролётов {label} {where}: "
                         f"{first_when:%d}–{last_when:%d} {MONTHS_GEN[start.month]}, "
                         f"лучший пролёт {best[0]:%d} числа, "
-                        f"высота до {best[1]:.0f}°")
+                        f"высота до {best[1]:.0f}° ({site})")
                 precision = "hour"
 
             out.append(Event(

@@ -118,6 +118,7 @@ class Issue:
     enabled_kinds: set[str] = field(default_factory=set)
     enabled_ranks: set[str] = field(default_factory=lambda: {"must", "interesting"})
     primary_city: str = "москва"
+    icons: bool = False
     cities: list[str] = field(default_factory=list)
     computed_at: dt.datetime | None = None
 
@@ -137,8 +138,13 @@ class Issue:
         """Что реально попадёт в пост."""
         return [e for e in self.visible_events() if e.selected]
 
-    def lines(self) -> list[str]:
-        return [e.line() for e in self.published()]
+    def lines(self, icons: bool | None = None) -> list[str]:
+        """Строки публикации. Значки — по настройке выпуска."""
+        from astrocal.icons import decorate
+
+        use_icons = self.icons if icons is None else icons
+        return [decorate(e.line(), e.event, e.kind) if use_icons else e.line()
+                for e in self.published()]
 
     def by_id(self, event_id: str) -> EditableEvent | None:
         for item in self.events:
