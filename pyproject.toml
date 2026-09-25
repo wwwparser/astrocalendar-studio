@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "astrocalendar-studio"
+version = "1.1.0"
+description = "Настольная система подготовки, проверки и визуализации астрономических календарей"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "skyfield>=1.49",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyarrow>=14.0",
+    "requests>=2.31",
+    "sgp4>=2.23",
+    "matplotlib>=3.8",
+    "PySide6>=6.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-qt>=4.4", "pyflakes>=3.2"]
+
+[project.gui-scripts]
+astrocalendar-studio = "astrocal_studio.app:main"
+
+[project.urls]
+Homepage = "https://github.com/wwwparser/astrocalendar-studio"
+
+# Пакеты лежат в src/, а не в корне: так при запуске из корня репозитория
+# не подхватывается случайно одноимённый каталог, и тесты работают с
+# установленной версией, а не с сырыми файлами.
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

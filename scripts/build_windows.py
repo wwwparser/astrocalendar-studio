@@ -144,7 +144,10 @@ def main(argv: list[str]) -> int:
     target = DIST / f"{NAME}.exe" if onefile else DIST / NAME / f"{NAME}.exe"
     print(f"\nГотово: {target}")
     if not onefile:
-        print("Рядом с exe положите каталог data/ (эфемериды и кэш каталогов).")
+        print("Данные в сборку не входят: при первом запуске приложение "
+              "предложит их скачать.")
+        print("Для раздачи пользователям: запакуйте всю папку "
+              f"{DIST / NAME} в zip — exe без соседних файлов не работает.")
     return 0
 
 
