@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Проверка {{ title }} — AstroCalendar{% endblock %}
+{% block content %}
+
+<section class="card">
+  <div class="head">
+    <h2>{{ title }}</h2>
+    <div class="tabs">
+      <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}">События</a>
+      <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/publication">Публикация</a>
+      <span class="current">Проверка</span>
+    </div>
+  </div>
+  <p>
+    Событий {{ counts.total }},
+    с пометкой REVIEW <b class="{% if counts.review %}bad{% else %}ok{% endif %}">{{ counts.review }}</b>,
+    WARN <b class="{% if counts.warn %}warn{% else %}ok{% endif %}">{{ counts.warn }}</b>.
+  </p>
+  <p class="muted">
+    REVIEW означает, что событие нельзя публиковать не глядя. Проверяются
+    формат строки, часовой пояс, физическая правдоподобность величин, перевод
+    расстояний, блеск комет и сверка положений тел с JPL Horizons.
+  </p>
+  <p><a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/download/qa">Скачать полный отчёт</a></p>
+</section>
+
+<section class="card">
+  <h3>События с замечаниями</h3>
+  {% if flagged %}
+  <table class="grid">
+    <tr><th>Когда</th><th>Событие</th><th>Замечание</th></tr>
+    {% for item in flagged %}
+    {% for flag in item.event.flags %}
+    <tr>
+      <td class="when">{{ "%02d.%02d"|format(item.when.day, item.when.month) }}</td>
+      <td>{{ item.calculated_text }}</td>
+      <td>
+        <span class="{% if flag.level == 'REVIEW' %}bad{% else %}warn{% endif %}">{{ flag.level }}</span>
+        {{ flag.check }} — {{ flag.message }}
+      </td>
+    </tr>
+    {% endfor %}
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="ok">Замечаний нет: все проверки пройдены.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

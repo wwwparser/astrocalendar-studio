@@ -1,0 +1,218 @@
+/* Оформление веб-версии.
+
+   Те же принципы, что у настольной программы: рабочий инструмент, а не
+   витрина. Спокойные цвета, плотные таблицы, крупный моноширинный текст там,
+   где человек вычитывает пост перед публикацией.
+
+   Тёмная тема по умолчанию: календари верстают вечером, и светлый экран во
+   весь размер утомляет. Светлая включается системной настройкой. */
+
+:root {
+  --window: #171b22;
+  --surface: #1e232c;
+  --surface-alt: #242a35;
+  --border: #333b48;
+  --text: #e6ebf2;
+  --muted: #8d99ab;
+  --accent: #3d8bfd;
+  --ok: #69d18b;
+  --warn: #ffb347;
+  --bad: #ff7a7a;
+  --must: #ffcc66;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --window: #f4f6f9;
+    --surface: #ffffff;
+    --surface-alt: #eef2f7;
+    --border: #d3dae4;
+    --text: #1a212b;
+    --muted: #5f6b7c;
+    --accent: #1f6feb;
+    --ok: #1e7a44;
+    --warn: #a56a00;
+    --bad: #b02a2a;
+    --must: #a56a00;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--window);
+  color: var(--text);
+  font: 15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+body.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 16px;
+}
+
+/* ------------------------------------------------------------- шапка */
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.brand { font-weight: 700; font-size: 17px; color: var(--text);
+         text-decoration: none; }
+.top nav { display: flex; gap: 16px; flex: 1; }
+.top nav a, .brand { text-decoration: none; }
+.top nav a { color: var(--muted); }
+.top nav a:hover { color: var(--text); }
+.out { display: flex; align-items: center; gap: 10px; }
+.who { color: var(--muted); }
+
+main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+
+footer {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------------- блоки */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+
+.card.login { width: 100%; max-width: 360px; }
+.login h1 { margin: 0 0 4px; font-size: 22px; }
+.login label { display: block; margin: 14px 0 0; color: var(--muted);
+               font-size: 13px; }
+.login input { width: 100%; margin-top: 4px; }
+.login button { width: 100%; margin-top: 18px; }
+
+h2 { margin: 0 0 10px; font-size: 19px; }
+h3 { margin: 14px 0 6px; font-size: 15px; }
+.muted { color: var(--muted); font-size: 13px; }
+.ok { color: var(--ok); }
+.warn { color: var(--warn); }
+.bad { color: var(--bad); }
+.error { color: var(--bad); margin: 12px 0 0; }
+.hidden { display: none; }
+
+.head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.head h2, .head h3 { margin: 0; flex: 0 0 auto; }
+.tabs { display: flex; gap: 14px; margin-left: auto; }
+.tabs a { color: var(--muted); text-decoration: none; }
+.tabs a:hover { color: var(--text); }
+.tabs .current { color: var(--accent); font-weight: 600; }
+
+/* ------------------------------------------------------------- формы */
+
+input, select, button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+
+.primary, .button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.link { background: none; border: none; color: var(--accent); padding: 0;
+        text-decoration: underline; }
+
+.row { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+.row label { display: flex; flex-direction: column; gap: 4px;
+             color: var(--muted); font-size: 13px; }
+.check { display: inline-flex; align-items: center; gap: 6px;
+         color: var(--text); font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 4px 0 10px; }
+.group { margin-bottom: 8px; }
+
+a { color: var(--accent); }
+
+/* ------------------------------------------------------------- таблицы */
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 7px 8px; vertical-align: top;
+         border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: 13px; }
+
+.grid td { font-size: 14px; }
+.events .when { white-space: nowrap; color: var(--muted); font-size: 13px; }
+.events .rank { font-size: 12px; white-space: nowrap; }
+.rank-must { color: var(--must); font-weight: 600; }
+.rank-interesting { color: var(--accent); }
+.rank-optional, .rank-technical { color: var(--muted); }
+.row-review { background: rgba(255, 122, 122, .07); }
+
+.text { outline: none; border-radius: 4px; padding: 2px 4px;
+        margin: -2px -4px; }
+.text:focus { background: var(--surface-alt); }
+.text.saved { background: rgba(105, 209, 139, .18); }
+.tag { font-size: 11px; color: var(--warn); margin-right: 8px; }
+.details summary { color: var(--muted); font-size: 12px; cursor: pointer; }
+.details p { font-size: 13px; margin: 6px 0; }
+
+/* ------------------------------------------------------------- пост */
+
+.post {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font: 14px/1.6 "Segoe UI", -apple-system, sans-serif;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px;
+  margin: 10px 0 0;
+}
+
+.copy { margin-left: auto; }
+
+/* ------------------------------------------------------------- прогресс */
+
+.bar { height: 10px; background: var(--surface-alt); border-radius: 5px;
+       overflow: hidden; margin: 12px 0 8px; }
+.fill { height: 100%; background: var(--accent); transition: width .4s; }
+
+/* ------------------------------------------------------------- лента */
+
+.live .kind { font-weight: 600; }
+.status { font-size: 12px; padding: 1px 7px; border-radius: 10px;
+          border: 1px solid var(--border); color: var(--muted); }
+.status-new { color: var(--ok); border-color: var(--ok); }
+.status-updated { color: var(--warn); border-color: var(--warn); }
+.stars { color: var(--must); }
+.badge { background: var(--accent); color: #fff; border-radius: 10px;
+         padding: 1px 8px; font-size: 13px; }
+.lines { margin: 6px 0 0; padding-left: 18px; }
+.lines li { font-size: 14px; }
+
+@media (max-width: 700px) {
+  .tabs { margin-left: 0; width: 100%; }
+  .events .details { display: none; }
+}

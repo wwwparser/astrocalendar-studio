@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Публикация {{ title }} — AstroCalendar{% endblock %}
+{% block content %}
+
+<section class="card">
+  <div class="head">
+    <h2>{{ title }}</h2>
+    <div class="tabs">
+      <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}">События</a>
+      <span class="current">Публикация</span>
+      <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/qa">Проверка</a>
+    </div>
+  </div>
+  <p class="muted">
+    {{ publication.length }} знаков, частей {{ publication.parts|length }}.
+    Лимит Telegram — 4096 знаков на сообщение; разрыв между частями никогда не
+    проходит посреди события.
+  </p>
+  <p>
+    Скачать:
+    <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/download/txt">текст</a> ·
+    <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/download/md">markdown</a> ·
+    <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/download/json">json</a> ·
+    <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/download/protocol">протокол</a> ·
+    <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/download/qa">отчёт проверки</a>
+  </p>
+</section>
+
+{% for part in publication.parts %}
+<section class="card">
+  <div class="head">
+    <h3>Часть {{ part.index }} из {{ publication.parts|length }}</h3>
+    <span class="muted">{{ part.length }} / 4096</span>
+    <button class="copy" data-target="part{{ part.index }}">Копировать</button>
+  </div>
+  <pre class="post" id="part{{ part.index }}">{{ part.text }}</pre>
+</section>
+{% endfor %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll(".copy").forEach(button => {
+  button.addEventListener("click", async () => {
+    const node = document.getElementById(button.dataset.target);
+    await navigator.clipboard.writeText(node.textContent);
+    const was = button.textContent;
+    button.textContent = "скопировано";
+    setTimeout(() => { button.textContent = was; }, 1200);
+  });
+});
+</script>
+{% endblock %}

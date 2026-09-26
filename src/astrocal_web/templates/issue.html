@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — AstroCalendar{% endblock %}
+{% block content %}
+
+<section class="card">
+  <div class="head">
+    <h2>{{ title }}</h2>
+    <div class="tabs">
+      <span class="current">События</span>
+      <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/publication">Публикация</a>
+      <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/qa">Проверка</a>
+    </div>
+  </div>
+  <p class="muted" id="summary">
+    Рассчитано {{ counts.total }}, показано {{ counts.visible }},
+    в публикации <b id="published">{{ counts.published }}</b>,
+    правок {{ counts.edited }}, REVIEW {{ counts.review }}.
+    Длина поста <span id="length">{{ publication.length }}</span> знаков,
+    частей <span id="parts">{{ publication.parts|length }}</span>.
+  </p>
+</section>
+
+<section class="card">
+  <details>
+    <summary>Фильтры: что показывать</summary>
+    <form method="post"
+          action="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/filters">
+      <h3>Ранг значимости</h3>
+      <div class="chips">
+        {% for key, label in ranks %}
+        <label class="check"><input type="checkbox" name="rank" value="{{ key }}"
+          {% if key in issue.enabled_ranks %}checked{% endif %}> {{ key }} — {{ label }}</label>
+        {% endfor %}
+      </div>
+      <h3>Категории событий</h3>
+      {% for group, kinds in groups.items() %}
+      <div class="group">
+        <b>{{ group }}</b>
+        <div class="chips">
+          {% for kind in kinds %}
+          <label class="check"><input type="checkbox" name="kind" value="{{ kind.key }}"
+            {% if kind.key in issue.enabled_kinds %}checked{% endif %}> {{ kind.title }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+      <label class="check"><input type="checkbox" name="icons"
+        {% if issue.icons %}checked{% endif %}> значки событий вместо ▪️</label>
+      <button type="submit" class="primary">Применить</button>
+    </form>
+  </details>
+</section>
+
+<section class="card">
+  <table class="events">
+    <tr><th></th><th>Когда</th><th>Ранг</th><th>Событие</th><th>QA</th></tr>
+    {% for item in visible %}
+    <tr data-id="{{ item.event_id }}" class="{% if item.qa_level == 'REVIEW' %}row-review{% endif %}">
+      <td><input type="checkbox" class="pick" {% if item.selected %}checked{% endif %}></td>
+      <td class="when">{{ "%02d.%02d %02d:%02d"|format(item.when.day, item.when.month, item.when.hour, item.when.minute) }}</td>
+      <td class="rank rank-{{ item.rank }}">{{ item.rank_title }}</td>
+      <td>
+        <div class="text" contenteditable="true"
+             data-original="{{ item.calculated_text }}">{{ item.text }}</div>
+        {% if item.edited %}<span class="tag">правка</span>
+          <button class="link revert">вернуть расчётный</button>{% endif %}
+        <details class="details">
+          <summary>как посчитано</summary>
+          <p>{{ item.event.computed }}</p>
+          {% if item.event.notes %}<p class="muted">{{ item.event.notes }}</p>{% endif %}
+          <p class="muted">Источники: {{ item.event.sources|join(", ") }}</p>
+        </details>
+      </td>
+      <td>{% if item.qa_level == "OK" %}<span class="ok">ок</span>
+          {% elif item.qa_level == "WARN" %}<span class="warn">warn</span>
+          {% else %}<span class="bad">review</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const issue = "{{ issue.year }}-{{ '%02d' % issue.month }}";
+
+function refreshCounters(data) {
+  document.getElementById("published").textContent = data.published;
+  document.getElementById("length").textContent = data.length;
+  document.getElementById("parts").textContent = data.parts;
+}
+
+document.querySelectorAll("tr[data-id]").forEach(row => {
+  const id = row.dataset.id;
+
+  row.querySelector(".pick").addEventListener("change", async event => {
+    const response = await fetch(`/api/issues/${issue}/toggle`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({id: id, selected: event.target.checked})
+    });
+    if (response.ok) { refreshCounters(await response.json()); }
+  });
+
+  const text = row.querySelector(".text");
+  text.addEventListener("blur", async () => {
+    const value = text.textContent.trim();
+    if (value === text.dataset.saved) { return; }
+    const response = await fetch(`/api/issues/${issue}/text`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({id: id, text: value})
+    });
+    if (response.ok) { text.dataset.saved = value; text.classList.add("saved");
+      setTimeout(() => text.classList.remove("saved"), 900); }
+  });
+
+  const revert = row.querySelector(".revert");
+  if (revert) {
+    revert.addEventListener("click", async () => {
+      await fetch(`/api/issues/${issue}/text`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({id: id, text: ""})
+      });
+      location.reload();
+    });
+  }
+});
+</script>
+{% endblock %}

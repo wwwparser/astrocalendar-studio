@@ -1,0 +1,32 @@
+# Развёртывание веб-версии AstroCalendar.
+#
+# Порт слушается только на localhost: наружу сайт смотрит через Apache,
+# который держит сертификат. Открывать 8120 в интернет не нужно.
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: astrocalendar-web
+    container_name: astrocalendar-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8120:8120"
+    environment:
+      # Ключ подписи сессий и прочие секреты — из .env рядом с этим файлом
+      ASTROCAL_WEB_SECRET: ${ASTROCAL_WEB_SECRET:?нужен ASTROCAL_WEB_SECRET в .env}
+      ASTROCAL_HOME: /srv/astrocalendar
+      TZ: Europe/Moscow
+    env_file:
+      - .env
+    volumes:
+      # Эфемериды, каталоги, кэш, архив выпусков и список пользователей.
+      # Том на большом диске: только данные занимают около 200 МБ,
+      # а кэш ответов Horizons растёт со временем.
+      - /data/astrocalendar/data:/srv/astrocalendar/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8120/health"]
+      interval: 60s
+      timeout: 5s
+      retries: 3

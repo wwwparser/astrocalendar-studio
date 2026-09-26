@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ job.title }} — AstroCalendar{% endblock %}
+{% block content %}
+
+<section class="card">
+  <h2>{{ job.title }}</h2>
+  <div class="bar"><div class="fill" id="fill" style="width: {{ job.percent }}%"></div></div>
+  <p id="stage" class="muted">{{ job.stage }} · {{ job.percent }} % · {{ job.elapsed_text }}</p>
+
+  <div id="done" class="hidden">
+    <p class="ok">Готово.</p>
+    {% if job.payload.year %}
+    <p><a class="primary button"
+          href="/issues/{{ job.payload.year }}-{{ '%02d' % job.payload.month }}">Открыть выпуск</a></p>
+    {% else %}
+    <p><a class="primary button" href="/live">Открыть ленту</a></p>
+    {% endif %}
+  </div>
+
+  <div id="failed" class="hidden">
+    <p class="bad" id="error">{{ job.error }}</p>
+    <details><summary>подробности</summary><pre>{{ job.details }}</pre></details>
+  </div>
+
+  <p class="muted">Страницу можно закрыть: расчёт идёт на сервере и не
+    прервётся. Результат появится в списке выпусков.</p>
+</section>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const jobId = "{{ job.id }}";
+async function poll() {
+  const response = await fetch(`/api/jobs/${jobId}`);
+  if (!response.ok) { return; }
+  const job = await response.json();
+  document.getElementById("fill").style.width = job.percent + "%";
+  document.getElementById("stage").textContent =
+    `${job.stage} · ${job.percent} % · ${job.elapsed}`;
+  if (job.status === "done") {
+    document.getElementById("done").classList.remove("hidden");
+    return;
+  }
+  if (job.status === "failed") {
+    document.getElementById("error").textContent = job.error;
+    document.getElementById("failed").classList.remove("hidden");
+    return;
+  }
+  setTimeout(poll, 2000);
+}
+{% if job.active %}poll();{% elif job.status == "done" %}
+document.getElementById("done").classList.remove("hidden");
+{% else %}document.getElementById("failed").classList.remove("hidden");{% endif %}
+</script>
+{% endblock %}

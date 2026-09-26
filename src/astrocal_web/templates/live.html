@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}LIVE — AstroCalendar{% endblock %}
+{% block content %}
+
+<section class="card">
+  <div class="head">
+    <h2>LIVE{% if unread %} <span class="badge">{{ unread }}</span>{% endif %}</h2>
+    <form method="post" action="/live/refresh">
+      <button type="submit" class="primary"
+        {% if job %}disabled{% endif %}>Обновить сейчас</button>
+    </form>
+  </div>
+  <p class="muted">
+    Месячный календарь отвечает на вопрос «что произойдёт». Лента — «что
+    только что открыли или уточнили»: покрытия звёзд астероидами, близкие
+    пролёты, новые кометы MPC, новые и сверхновые TNS.
+  </p>
+  {% if job %}
+  <p class="warn">Обновление идёт: <a href="/jobs/{{ job.id }}">{{ job.stage }}</a></p>
+  {% endif %}
+</section>
+
+{% if records %}
+{% for record in records %}
+<section class="card live">
+  <div class="head">
+    <span class="kind">{{ record.icon }} {{ record.kind_title }}</span>
+    <span class="status status-{{ record.status|lower }}">{{ record.status }}</span>
+    <span class="muted">{{ record.relative }}</span>
+    {% if record.stars %}<span class="stars">{{ "★" * record.stars }}</span>{% endif %}
+  </div>
+  <h3>{{ record.title }}</h3>
+  <ul class="lines">
+    {% for line in record.lines %}<li>{{ line }}</li>{% endfor %}
+  </ul>
+</section>
+{% endfor %}
+{% else %}
+<section class="card">
+  <p class="muted">Лента пуста. Нажмите «Обновить сейчас»: программа сравнит
+    источники с прошлым снимком и покажет, что появилось.</p>
+</section>
+{% endif %}
+
+{% endblock %}

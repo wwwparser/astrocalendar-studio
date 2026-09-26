@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Выпуски — AstroCalendar{% endblock %}
+{% block content %}
+
+<section class="card">
+  <h2>Рассчитать выпуск</h2>
+  <p class="muted">Расчёт месяца занимает 10–15 минут и идёт в фоне: страницу
+    можно закрыть, результат сохранится.</p>
+  <form class="row" method="post" action="/issues/new">
+    <label>Год <input type="number" name="year" value="{{ year }}"
+                      min="1900" max="2150" required></label>
+    <label>Месяц
+      <select name="month">
+        {% for number, name in months.items() %}
+        <option value="{{ number }}" {% if number == month %}selected{% endif %}>
+          {{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" name="horizons" checked>
+      сверять с JPL Horizons</label>
+    <button type="submit" class="primary">Рассчитать</button>
+  </form>
+</section>
+
+{% if jobs %}
+<section class="card">
+  <h2>Задачи</h2>
+  <table class="grid">
+    <tr><th>Что</th><th>Состояние</th><th>Время</th><th></th></tr>
+    {% for job in jobs %}
+    <tr>
+      <td>{{ job.title }}</td>
+      <td>
+        {% if job.status == "done" %}<span class="ok">готово</span>
+        {% elif job.status == "failed" %}<span class="bad">ошибка</span>
+        {% else %}<span class="warn">{{ job.stage }} · {{ job.percent }} %</span>
+        {% endif %}
+      </td>
+      <td class="muted">{{ job.elapsed_text }}</td>
+      <td><a href="/jobs/{{ job.id }}">подробнее</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Готовые выпуски</h2>
+  {% if issues %}
+  <table class="grid">
+    <tr><th>Месяц</th><th>Событий</th><th>В публикации</th><th>REVIEW</th>
+      <th>Рассчитан</th><th></th></tr>
+    {% for item in issues %}
+    <tr>
+      <td><a href="/issues/{{ item.year }}-{{ '%02d' % item.month }}">
+        {{ months[item.month] }} {{ item.year }}</a></td>
+      <td>{{ item.total }}</td>
+      <td>{{ item.published }}</td>
+      <td>{% if item.review %}<span class="bad">{{ item.review }}</span>
+          {% else %}<span class="ok">0</span>{% endif %}</td>
+      <td class="muted">{{ (item.computed_at or "")[:16].replace("T", " ") }}</td>
+      <td>
+        <a href="/issues/{{ item.year }}-{{ '%02d' % item.month }}/publication">пост</a>
+        ·
+        <a href="/issues/{{ item.year }}-{{ '%02d' % item.month }}/qa">проверка</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">Пока ничего не рассчитано. Выберите месяц выше.</p>
+  {% endif %}
+</section>
+
+{% endblock %}
