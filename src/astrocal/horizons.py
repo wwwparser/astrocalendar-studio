@@ -49,15 +49,25 @@ def query(command: str, start: str, stop: str, step: str,
         params["CENTER"] = "'coord@399'"
         params["COORD_TYPE"] = "'GEODETIC'"
         params["SITE_COORD"] = f"'{longitude:.4f},{latitude:.4f},{elevation_km:.4f}'"
+    from . import trace
+
+    clock = time.monotonic()
     path = _cache_path(params)
     if path.exists():
-        return path.read_text(encoding="utf-8")
+        body = path.read_text(encoding="utf-8")
+        trace.fetched(f"{API}?COMMAND={command}", from_cache=True,
+                      size_bytes=len(body), seconds=time.monotonic() - clock)
+        return body
     last = None
     for attempt in range(retries):
         try:
             r = requests.get(API, params=params, timeout=timeout)
             r.raise_for_status()
             path.write_text(r.text, encoding="utf-8")
+            trace.fetched(f"{API}?COMMAND={command}", from_cache=False,
+                          size_bytes=len(r.text),
+                          seconds=time.monotonic() - clock,
+                          status=r.status_code)
             return r.text
         except Exception as exc:      # сеть/лимиты — пробуем ещё раз
             last = exc

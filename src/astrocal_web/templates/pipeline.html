@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Как считалось {{ title }} — AstroCalendar{% endblock %}
+{% block content %}
+
+<section class="card">
+  <div class="head">
+    <h2>{{ title }}</h2>
+    <div class="tabs">
+      <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}">События</a>
+      <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/publication">Публикация</a>
+      <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/qa">Проверка</a>
+      <span class="current">Как считалось</span>
+    </div>
+  </div>
+
+  {% if trace.stages %}
+  <p class="muted">
+    Расчёт занял {{ "%.0f"|format(trace.total_seconds) }} с, из них
+    {{ "%.0f"|format(trace.network_seconds) }} с на обращения к источникам.
+    Шагов {{ trace.stages|length }}, запросов {{ trace.fetch_count }},
+    из них скачано заново {{ trace.fresh_fetch_count }} — остальное взято
+    из кэша.
+  </p>
+  {% if slowest %}
+  <p class="muted">Дольше всего:
+    {% for stage in slowest %}{{ stage.title }} ({{ "%.0f"|format(stage.seconds) }} с){% if not loop.last %}, {% endif %}{% endfor %}.
+  </p>
+  {% endif %}
+  {% else %}
+  <p class="muted">Для этого выпуска трассировка не сохранялась: он посчитан
+    версией программы, в которой её ещё не было. Пересчитайте месяц, чтобы
+    увидеть ход работы.</p>
+  {% endif %}
+</section>
+
+{% if by_source %}
+<section class="card">
+  <h3>Куда ходили за данными</h3>
+  <table class="grid">
+    <tr><th>Источник</th><th>Запросов</th><th>Заново</th>
+      <th>Объём</th><th>Время</th><th>Что берём</th></tr>
+    {% for item in by_source %}
+    <tr>
+      <td>{% if item.source %}<a href="/sources#{{ item.source.key }}">{{ item.name }}</a>
+          {% else %}{{ item.name }}{% endif %}</td>
+      <td>{{ item.count }}</td>
+      <td>{% if item.fresh %}{{ item.fresh }}{% else %}<span class="muted">0</span>{% endif %}</td>
+      <td class="muted">{{ "%.0f"|format(item.bytes / 1024) }} КБ</td>
+      <td class="muted">{{ "%.1f"|format(item.seconds) }} с</td>
+      <td class="muted">{{ item.source.we_take if item.source else "—" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="muted">Ответы кэшируются на диске: повторный расчёт того же месяца
+    почти не обращается к сети.</p>
+</section>
+{% endif %}
+
+{% for stage in trace.stages %}
+<section class="card">
+  <div class="head">
+    <h3>{{ loop.index }}. {{ stage.title }}</h3>
+    <span class="muted">{{ "%.1f"|format(stage.seconds) }} с</span>
+    {% if stage.error %}<span class="bad">не выполнен</span>
+    {% elif stage.produced %}<span class="ok">событий: {{ stage.produced }}</span>
+    {% else %}<span class="muted">событий нет</span>{% endif %}
+  </div>
+
+  <p>{{ stage.description }}</p>
+
+  {% if stage.error %}
+  <p class="bad">{{ stage.error }}</p>
+  {% endif %}
+
+  {% if stage.counts %}
+  <p class="counts">
+    {% for key, value in stage.counts.items() %}
+    <span class="chip">{{ key }}: <b>{{ value }}</b></span>
+    {% endfor %}
+  </p>
+  {% endif %}
+
+  {% if stage.notes %}
+  <ul class="lines">
+    {% for note in stage.notes %}<li class="muted">{{ note }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if stage.rejects %}
+  <details>
+    <summary>отсеяно: {{ stage.rejected_total }}</summary>
+    <table class="grid">
+      {% for reject in stage.rejects %}
+      <tr><td>{{ reject.what }}</td><td class="muted">{{ reject.why }}</td></tr>
+      {% endfor %}
+    </table>
+    {% if stage.rejected_total > stage.rejects|length %}
+    <p class="muted">показаны первые {{ stage.rejects|length }}</p>
+    {% endif %}
+  </details>
+  {% endif %}
+
+  {% if stage.fetches %}
+  <details>
+    <summary>обращений к источникам: {{ stage.fetches|length }}
+      ({{ "%.1f"|format(stage.network_seconds) }} с)</summary>
+    <table class="grid">
+      <tr><th>Время</th><th>Адрес</th><th>Откуда</th><th>Объём</th><th>За</th></tr>
+      {% for fetch in stage.fetches[:25] %}
+      <tr>
+        <td class="muted">{{ fetch.at }}</td>
+        <td class="url">{{ fetch.url[:90] }}</td>
+        <td>{% if fetch.from_cache %}<span class="muted">кэш</span>
+            {% else %}<span class="ok">сеть</span>{% endif %}</td>
+        <td class="muted">{{ fetch.size_text }}</td>
+        <td class="muted">{{ "%.2f"|format(fetch.seconds) }} с</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% if stage.fetches|length > 25 %}
+    <p class="muted">показаны первые 25 из {{ stage.fetches|length }}</p>
+    {% endif %}
+  </details>
+  {% endif %}
+</section>
+{% endfor %}
+
+{% endblock %}

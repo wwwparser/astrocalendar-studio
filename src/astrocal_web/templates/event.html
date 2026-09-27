@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Событие — AstroCalendar{% endblock %}
+{% block content %}
+
+<section class="card">
+  <div class="head">
+    <h2>Разбор события</h2>
+    <div class="tabs">
+      <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}">← к списку событий</a>
+    </div>
+  </div>
+  <p class="muted">{{ "%02d.%02d.%04d, %02d:%02d"|format(item.when.day, item.when.month, item.when.year, item.when.hour, item.when.minute) }} МСК</p>
+  <p class="eventline">{{ item.text }}</p>
+  {% if item.edited %}
+  <p class="muted">Расчётный текст: {{ item.calculated_text }}</p>
+  {% endif %}
+  <p>
+    <span class="rank rank-{{ item.rank }}">{{ item.rank_title }}</span> ·
+    уверенность: {{ item.event.confidence }} ·
+    точность: {{ "до минуты" if item.event.precision == "minute" else "до часа" }} ·
+    {% if item.selected %}<span class="ok">в публикации</span>
+    {% else %}<span class="muted">не в публикации</span>{% endif %}
+  </p>
+</section>
+
+<section class="card">
+  <h3>Как посчитано</h3>
+  <p>{{ item.event.computed }}</p>
+  {% if item.event.notes %}<p class="muted">{{ item.event.notes }}</p>{% endif %}
+</section>
+
+{% if stage %}
+<section class="card">
+  <h3>Шаг расчёта: {{ stage.title }}</h3>
+  <p>{{ stage.description }}</p>
+  <p class="muted">
+    Шаг занял {{ "%.1f"|format(stage.seconds) }} с{% if stage.counts %};
+    {% for key, value in stage.counts.items() %}{{ key }}: {{ value }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}.
+    <a href="/issues/{{ issue.year }}-{{ '%02d' % issue.month }}/pipeline">весь ход расчёта</a>
+  </p>
+</section>
+{% endif %}
+
+<section class="card">
+  <h3>Источники</h3>
+  <ul class="lines">
+    {% for source in item.event.sources %}<li>{{ source }}</li>{% endfor %}
+  </ul>
+  {% for source in sources %}
+  <div class="source">
+    <b>{{ source.name }}</b> — {{ source.we_take }}.
+    <span class="muted">{{ source.maintainer }}.</span>
+    <a class="muted" href="/sources#{{ source.key }}">подробнее</a>
+  </div>
+  {% endfor %}
+</section>
+
+{% if item.event.provenance %}
+<section class="card">
+  <h3>Происхождение</h3>
+  <table class="grid">
+    {% for key, value in item.event.provenance.items() %}
+    <tr><td class="muted">{{ key }}</td><td>{{ value }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+
+<section class="card">
+  <h3>Проверки</h3>
+  {% if item.event.flags %}
+  <table class="grid">
+    {% for flag in item.event.flags %}
+    <tr>
+      <td><span class="{% if flag.level == 'REVIEW' %}bad{% else %}warn{% endif %}">{{ flag.level }}</span></td>
+      <td>{{ flag.check }}</td><td>{{ flag.message }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="ok">Замечаний нет: событие прошло все проверки.</p>
+  {% endif %}
+</section>
+
+{% if item.event.meta %}
+<section class="card">
+  <details>
+    <summary>Служебные данные расчёта</summary>
+    <table class="grid">
+      {% for key, value in item.event.meta.items() %}
+      <tr><td class="muted">{{ key }}</td>
+        <td class="url">{{ value|string|truncate(200) }}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+</section>
+{% endif %}
+
+{% endblock %}

@@ -216,3 +216,33 @@ th { color: var(--muted); font-weight: 600; font-size: 13px; }
   .tabs { margin-left: 0; width: 100%; }
   .events .details { display: none; }
 }
+
+/* ------------------------------------------------------------- кухня расчёта */
+
+.counts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.chip {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.chip b { color: var(--text); }
+
+.url {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.source { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.source:last-child { border-bottom: none; }
+.source p { margin: 4px 0; }
+
+.eventline { font-size: 17px; margin: 6px 0 10px; }
+
+details summary { cursor: pointer; color: var(--muted); }
+details summary:hover { color: var(--text); }
+details > table, details > .grid { margin-top: 8px; }

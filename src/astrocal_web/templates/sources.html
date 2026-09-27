@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Источники — AstroCalendar{% endblock %}
+{% block content %}
+
+<section class="card">
+  <h2>Откуда берутся данные</h2>
+  <p class="muted">
+    Ни одно число в календаре не придумано: за каждым стоит эфемерида,
+    каталог или наблюдение. Здесь перечислено, что это за источники, кто их
+    ведёт, как часто они обновляются и что именно мы из них достаём.
+  </p>
+  <p class="muted">
+    Ключевых величин это касается вдвойне: положения тел, посчитанные по
+    DE440s, сверяются с независимым JPL Horizons, а блеск комет берётся из
+    наблюдений COBS, а не из формулы по архивным параметрам.
+  </p>
+</section>
+
+{% for kind, items in groups.items() %}
+<section class="card">
+  <h3>{{ kind|capitalize }}</h3>
+  {% for source in items %}
+  <div class="source" id="{{ source.key }}">
+    <div class="head">
+      <b>{{ source.name }}</b>
+      <a class="muted" href="{{ source.url }}" target="_blank"
+         rel="noopener noreferrer">сайт источника</a>
+      {% if source.age_text %}
+      <span class="muted">локальная копия: {{ source.age_text }}</span>
+      {% endif %}
+    </div>
+    <p class="muted">Ведёт: {{ source.maintainer }}.
+      Обновляется: {{ source.cadence }}.</p>
+    <p>Берём: {{ source.we_take }}.</p>
+    {% if source.note %}<p class="muted">{{ source.note }}</p>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endfor %}
+
+{% endblock %}

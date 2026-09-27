@@ -119,6 +119,8 @@ class Issue:
     enabled_ranks: set[str] = field(default_factory=lambda: {"must", "interesting"})
     primary_city: str = "москва"
     icons: bool = False
+    # ход расчёта: шаги, счётчики, обращения к источникам (astrocal.trace)
+    trace: dict = field(default_factory=dict)
     cities: list[str] = field(default_factory=list)
     computed_at: dt.datetime | None = None
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Callable
 
-from astrocal import config as cfg, qa, rating, telegram
+from astrocal import config as cfg, qa, rating, telegram, trace
 from astrocal.build import collect, render_post, render_protocol, render_qa_report
 from astrocal.cities import all_cities, by_key
 from astrocal.core import Event
@@ -42,7 +42,8 @@ def compute_issue(year: int, month: int, *, use_horizons: bool = True,
     start, end = cfg.month_bounds(year, month)
 
     report("Расчёт событий", 5)
-    events, extra = collect(start, end)
+    with trace.recording() as record:
+        events, extra = collect(start, end)
 
     report("Ранжирование", 60)
     rating.apply(events)
@@ -53,6 +54,7 @@ def compute_issue(year: int, month: int, *, use_horizons: bool = True,
 
     report("Сборка выпуска", 92)
     issue = Issue(year=year, month=month, extra=extra, qa=qa_result,
+                  trace=record.as_dict(),
                   enabled_kinds={kind.key for kind in KINDS},
                   computed_at=dt.datetime.now(cfg.MSK),
                   cities=[city.key for city in all_cities()])

@@ -127,6 +127,7 @@ def dump(issue: Issue) -> dict:
                "review": len(qa.get("review", []) or []),
                "warn": len(qa.get("warn", []) or []),
                "clean": qa.get("clean", 0)},
+        "trace": issue.trace or {},
         "events": [dump_event(item) for item in issue.ordered()],
     }
 
@@ -142,6 +143,7 @@ def load(payload: dict) -> Issue:
         cities=list(payload.get("cities") or []),
     )
     issue.icons = bool(payload.get("icons", False))
+    issue.trace = dict(payload.get("trace") or {})
     computed_at = payload.get("computed_at")
     if computed_at:
         issue.computed_at = dt.datetime.fromisoformat(computed_at)

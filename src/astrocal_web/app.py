@@ -275,6 +275,72 @@ def _routes(application: FastAPI) -> None:
                      title=month_title(year, month),
                      publication=service.publication(issue))
 
+    @application.get("/issues/{year}-{month}/pipeline",
+                     response_class=HTMLResponse)
+    async def pipeline_page(request: Request, year: int, month: int,
+                            user: str = Depends(current_user)):
+        """Как считался этот выпуск: шаги, данные, время, отсев."""
+        from astrocal.trace import Trace
+
+        from .sources import match
+
+        issue = load_issue(year, month)
+        record = Trace.from_dict(issue.trace or {})
+        # обращения к сети, сведённые по источникам: иначе сотня строк
+        # «Horizons, Horizons, Horizons» ничего не объясняет
+        by_source: dict = {}
+        for item in record.stages:
+            for fetch in item.fetches:
+                source = match(fetch.url)
+                name = source.name if source else fetch.host
+                entry = by_source.setdefault(
+                    name, {"name": name, "source": source, "count": 0,
+                           "fresh": 0, "bytes": 0, "seconds": 0.0})
+                entry["count"] += 1
+                entry["fresh"] += 0 if fetch.from_cache else 1
+                entry["bytes"] += fetch.size_bytes
+                entry["seconds"] += fetch.seconds
+        return _page(request, "pipeline.html", user, issue=issue,
+                     title=month_title(year, month), trace=record,
+                     by_source=sorted(by_source.values(),
+                                      key=lambda item: -item["seconds"]),
+                     slowest=sorted(record.stages,
+                                    key=lambda item: -item.seconds)[:3])
+
+    @application.get("/issues/{year}-{month}/event/{event_id}",
+                     response_class=HTMLResponse)
+    async def event_page(request: Request, year: int, month: int,
+                         event_id: str, user: str = Depends(current_user)):
+        """Разбор одного события: откуда взялось каждое число."""
+        from astrocal.trace import Trace
+
+        from .sources import CATALOGUE
+
+        issue = load_issue(year, month)
+        item = issue.by_id(event_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="событие не найдено")
+        record = Trace.from_dict(issue.trace or {})
+        # шаг, на котором событие родилось: связь по категории таксономии
+        from astrocal.build import STEPS
+        stage = next((entry for entry in record.stages
+                      if entry.key in STEPS
+                      and _stage_matches(entry.key, item)), None)
+        mentioned = [source for source in CATALOGUE
+                     if any(source.name.split()[0].lower() in text.lower()
+                            for text in item.event.sources)]
+        return _page(request, "event.html", user, issue=issue, item=item,
+                     title=month_title(year, month), stage=stage,
+                     sources=mentioned)
+
+    @application.get("/sources", response_class=HTMLResponse)
+    async def sources_page(request: Request,
+                           user: str = Depends(current_user)):
+        """Каталог источников: что это и что мы оттуда берём."""
+        from .sources import by_kind
+
+        return _page(request, "sources.html", user, groups=by_kind())
+
     @application.get("/issues/{year}-{month}/qa", response_class=HTMLResponse)
     async def qa_page(request: Request, year: int, month: int,
                       user: str = Depends(current_user)):
@@ -335,6 +401,27 @@ def _routes(application: FastAPI) -> None:
     async def health():
         return JSONResponse({"status": "ok",
                              "time": dt.datetime.now(cfg.MSK).isoformat()})
+
+
+# Какому шагу расчёта принадлежит событие. Таксономия отвечает на вопрос
+# «что это за событие», а здесь нужен обратный путь — «кто его посчитал».
+STAGE_BY_CATEGORY = {
+    "moon": "moon", "occultation": "occultations", "eclipse": "eclipses",
+    "planet": "planets", "season": "seasons", "jupiter_moons": "jupiter_moons",
+    "meteors": "meteors", "jupiter_phenomena": "jupiter_phenomena",
+    "jupiter_mutual": "jupiter_mutual", "lunar_feature": "lunar_features",
+    "visibility": "visibility", "asteroid": "asteroids",
+    "neo_bright": "bright_neo",
+    "asteroid_occultation": "asteroid_occultations",
+    "saturn_moons": "titan", "spaceflight": "spaceflight", "iss": "iss",
+}
+
+
+def _stage_matches(key: str, item) -> bool:
+    category = item.event.category
+    if category.startswith("comet"):
+        return key == "comets"
+    return STAGE_BY_CATEGORY.get(category) == key
 
 
 def _attachment(filename: str) -> dict:

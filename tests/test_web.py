@@ -80,8 +80,9 @@ def signed_in(client):
 
 
 @pytest.mark.parametrize("path", [
-    "/", "/live", "/issues/2026-10", "/issues/2026-10/publication",
-    "/issues/2026-10/qa", "/issues/2026-10/download/txt"])
+    "/", "/live", "/sources", "/issues/2026-10",
+    "/issues/2026-10/publication", "/issues/2026-10/qa",
+    "/issues/2026-10/pipeline", "/issues/2026-10/download/txt"])
 def test_pages_require_login(client, path):
     response = client.get(path, follow_redirects=False)
     assert response.status_code == 303
@@ -325,3 +326,105 @@ def test_live_page_opens_without_data(signed_in):
     body = signed_in.get("/live").text
     assert "LIVE" in body
     assert "Обновить сейчас" in body
+
+
+# ------------------------------------------------------------------ кухня
+
+
+def test_sources_page_explains_each_source(signed_in):
+    body = signed_in.get("/sources").text
+    assert "JPL DE440s" in body
+    assert "COBS" in body
+    assert "Берём:" in body
+
+
+def test_pipeline_page_without_trace_says_so(signed_in):
+    """Старый выпуск считался до трассировки — страница не должна врать."""
+    body = signed_in.get("/issues/2026-10/pipeline").text
+    assert "трассировка не сохранялась" in body
+
+
+def test_pipeline_page_shows_stages(signed_in, tmp_path):
+    issue = archive.read(2026, 10)
+    issue.trace = {
+        "started_at": "2026-09-27T01:00:00+03:00", "seconds": 42.0,
+        "stages": [{
+            "key": "comets", "title": "Кометы",
+            "description": "Орбиты из MPC, блеск из наблюдений COBS.",
+            "seconds": 30.0, "counts": {"отобрано": 2},
+            "notes": ["источник ответил из кэша"],
+            "rejects": [{"what": "65P/Gunn", "why": "блеск не подтверждён"}],
+            "rejected_total": 4,
+            "fetches": [{"url": "https://cobs.si/api/comet_list.api",
+                         "from_cache": False, "size_bytes": 4096,
+                         "seconds": 1.5, "status": 200, "at": "01:00:05"}],
+            "error": ""}]}
+    archive.save(issue)
+
+    body = signed_in.get("/issues/2026-10/pipeline").text
+    assert "Кометы" in body
+    assert "блеск из наблюдений COBS" in body
+    assert "отобрано" in body
+    assert "65P/Gunn" in body
+    assert "блеск не подтверждён" in body
+    assert "COBS" in body, "источник обращения должен быть узнан по адресу"
+
+
+def test_pipeline_groups_requests_by_source(signed_in):
+    issue = archive.read(2026, 10)
+    issue.trace = {"stages": [{
+        "key": "planets", "title": "Планеты", "description": "",
+        "seconds": 1.0, "counts": {}, "notes": [], "rejects": [],
+        "rejected_total": 0, "error": "",
+        "fetches": [
+            {"url": "https://ssd.jpl.nasa.gov/api/horizons.api?x=1",
+             "from_cache": True, "size_bytes": 1000, "seconds": 0.1,
+             "status": 200, "at": "01:00:01"},
+            {"url": "https://ssd.jpl.nasa.gov/api/horizons.api?x=2",
+             "from_cache": False, "size_bytes": 2000, "seconds": 0.9,
+             "status": 200, "at": "01:00:02"}]}]}
+    archive.save(issue)
+    body = signed_in.get("/issues/2026-10/pipeline").text
+    assert "JPL Horizons" in body
+
+
+def test_failed_stage_is_visible(signed_in):
+    issue = archive.read(2026, 10)
+    issue.trace = {"stages": [{
+        "key": "titan", "title": "Титан", "description": "Спутник Сатурна.",
+        "seconds": 0.5, "counts": {}, "notes": [], "rejects": [],
+        "rejected_total": 0, "fetches": [],
+        "error": "RuntimeError: Horizons недоступен"}]}
+    archive.save(issue)
+    body = signed_in.get("/issues/2026-10/pipeline").text
+    assert "не выполнен" in body
+    assert "Horizons недоступен" in body
+
+
+def test_event_page_shows_derivation(signed_in):
+    issue = archive.read(2026, 10)
+    target = issue.events[0].event_id
+    body = signed_in.get(f"/issues/2026-10/event/{target}").text
+    assert "Как посчитано" in body
+    assert "тестовый расчёт" in body
+    assert "Проверки" in body
+    assert "пример замечания" in body
+
+
+def test_event_page_links_the_stage(signed_in):
+    issue = archive.read(2026, 10)
+    issue.trace = {"stages": [{
+        "key": "planets", "title": "Планеты",
+        "description": "Стояния, противостояния и элонгации.",
+        "seconds": 2.0, "counts": {"отобрано": 1}, "notes": [],
+        "rejects": [], "rejected_total": 0, "fetches": [], "error": ""}]}
+    archive.save(issue)
+    saturn = next(item for item in archive.read(2026, 10).events
+                  if item.event.category == "planet")
+    body = signed_in.get(f"/issues/2026-10/event/{saturn.event_id}").text
+    assert "Шаг расчёта: Планеты" in body
+    assert "Стояния, противостояния" in body
+
+
+def test_unknown_event_page_is_404(signed_in):
+    assert signed_in.get("/issues/2026-10/event/нетакого").status_code == 404

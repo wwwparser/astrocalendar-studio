@@ -5,6 +5,7 @@ import datetime as dt
 import json
 
 from . import config as cfg
+from . import trace
 from .core import Event
 from .events import (asteroid_occultations, asteroids, close_approaches,
                      comets, eclipses, iss,
@@ -17,86 +18,194 @@ from .fmt import MONTHS_NOM_CAP, date_time_msk
 HEADER = "АСТРОНОМИЧЕСКИЕ СОБЫТИЯ {month} {year} года (время московское)✨"
 
 
+# Описание каждого шага расчёта: что модуль делает и откуда берёт данные.
+# Живёт рядом с самим расчётом, чтобы текст на сайте не разошёлся с кодом.
+STEPS = {
+    "moon": ("Луна",
+             "Фазы, перигей и апогей, сближения с планетами, яркими звёздами "
+             "и объектами каталогов. Момент каждого явления — ноль или "
+             "экстремум функции на сетке времени: грубая сетка находит "
+             "интервал, золотое сечение уточняет до секунды."),
+    "occultations": ("Покрытия Луной",
+                     "Покрытия планет и ярких звёзд. Наблюдатель видит "
+                     "покрытие, когда угол между направлениями на Луну и на "
+                     "объект меньше видимого радиуса лунного диска. Полоса "
+                     "ищется сеткой 2° по всей Земле."),
+    "eclipses": ("Затмения",
+                 "Солнечные и лунные. Для солнечных считается полоса полной "
+                 "фазы и границы частных, для лунных — контакты теневой фазы "
+                 "и откуда они видны."),
+    "planets": ("Планеты",
+                "Стояния, противостояния, соединения, элонгации и максимумы "
+                "блеска. Признак события — переход производной или разности "
+                "долгот через ноль."),
+    "seasons": ("Равноденствия и солнцестояния",
+                "Моменты, когда эклиптическая долгота Солнца проходит через "
+                "0°, 90°, 180° и 270°."),
+    "jupiter_moons": ("Конфигурации галилеевых спутников",
+                      "Положения четырёх спутников относительно диска "
+                      "Юпитера по эфемериде jup380s."),
+    "meteors": ("Метеорные потоки",
+                "Максимум задаётся не датой, а долготой Солнца λ☉ по "
+                "рабочему списку IMO: момент вычисляется на конкретный год. "
+                "Дальше считается высота радианта, окно наблюдения и помеха "
+                "от Луны."),
+    "jupiter_phenomena": ("Явления спутников Юпитера",
+                          "Прохождения по диску, тени, покрытия и затмения. "
+                          "Проекция спутника на диск считается дважды: со "
+                          "стороны Земли и со стороны Солнца."),
+    "jupiter_mutual": ("Взаимные явления спутников",
+                       "Спутник закрывает другой спутник или роняет на него "
+                       "тень. Возможно только вблизи равноденствия Юпитера, "
+                       "раз примерно в шесть лет."),
+    "lunar_features": ("Lunar X, либрации",
+                       "Селенографическая колонгитуда и либрации по ядрам "
+                       "ориентации Луны DE421."),
+    "visibility": ("Периоды видимости планет",
+                   "Редакционный критерий: планета видна, если в момент, "
+                   "когда Солнце опустилось на нужную глубину (arcus "
+                   "visionis по блеску), она выше 2°."),
+    "asteroids": ("Яркие астероиды",
+                  "Проходы Цереры, Весты и компании рядом со звёздами и "
+                  "объектами каталогов по эфемеридам JPL Horizons."),
+    "bright_neo": ("Яркие околоземные астероиды",
+                   "Объекты, которые станут ярче 14-й величины в ближайший "
+                   "год, по таблице ван Бёйтенена. Отбор по блеску, а не по "
+                   "размеру камня."),
+    "asteroid_occultations": ("Покрытия звёзд астероидами",
+                              "Кандидаты из лент IOTA, но полоса "
+                              "пересчитывается по актуальной орбите JPL: "
+                              "годовой прогноз успевает уехать на часы."),
+    "titan": ("Титан",
+              "Положение относительно Сатурна по спутниковым эфемеридам "
+              "Horizons, с расстоянием до края диска планеты."),
+    "comets": ("Кометы",
+               "Орбиты из MPC, блеск — из наблюдений COBS: формула по "
+               "архивным параметрам ошибается на величины. Дальше "
+               "кросс-матч трека с каталогами звёзд и туманностей."),
+    "spaceflight": ("Космонавтика",
+                    "Пуски из Launch Library 2 со статусами Go, TBC и TBD."),
+    "iss": ("Станции",
+            "Пролёты МКС и китайской станции по свежим элементам орбиты "
+            "Celestrak, модель SGP4."),
+}
+
+
+def _step(key: str):
+    """Шаг трассировки с описанием из таблицы."""
+    title, description = STEPS.get(key, (key, ""))
+    return trace.stage(key, title, description)
+
+
 def collect(start: dt.datetime, end: dt.datetime) -> tuple[list[Event], dict]:
-    """Все события месяца + вспомогательные данные для протокола."""
+    """Все события месяца + вспомогательные данные для протокола.
+
+    Каждый модуль вызывается внутри шага трассировки: если она включена, в
+    ней останутся счётчики, обращения к сети и время. Если выключена —
+    накладных расходов нет.
+    """
     extra: dict = {}
     events: list[Event] = []
 
-    events += moon.all_events(start, end)
+    def add(key: str, produced: list) -> None:
+        trace.count(отобрано=len(produced))
+        events.extend(produced)
 
-    occ_events, occ_report = occultations.build(start, end)
-    star_occ_events, star_occ_report = occultations.build_stars(start, end)
-    events += occ_events + star_occ_events
-    extra["occultations"] = occ_report + star_occ_report
+    with _step("moon"):
+        add("moon", moon.all_events(start, end))
 
-    eclipse_events, eclipse_report = eclipses.all_events(start, end)
-    events += eclipse_events
-    extra["eclipses"] = eclipse_report
+    with _step("occultations"):
+        occ_events, occ_report = occultations.build(start, end)
+        star_occ_events, star_occ_report = occultations.build_stars(start, end)
+        extra["occultations"] = occ_report + star_occ_report
+        trace.count(рассмотрено=len(extra["occultations"]))
+        add("occultations", occ_events + star_occ_events)
 
-    events += planets.all_events(start, end)
-    events += seasons.all_events(start, end)
-    events += jupiter_moons.all_events(start, end)
-    events += meteors.all_events(start, end)
+    with _step("eclipses"):
+        eclipse_events, eclipse_report = eclipses.all_events(start, end)
+        extra["eclipses"] = eclipse_report
+        add("eclipses", eclipse_events)
+
+    with _step("planets"):
+        add("planets", planets.all_events(start, end))
+
+    with _step("seasons"):
+        add("seasons", seasons.all_events(start, end))
+
+    with _step("jupiter_moons"):
+        add("jupiter_moons", jupiter_moons.all_events(start, end))
+
+    with _step("meteors"):
+        add("meteors", meteors.all_events(start, end))
+
+    for key, action in (
+            ("jupiter_phenomena",
+             lambda: jupiter_phenomena.all_events(start, end)),
+            ("lunar_features", lambda: lunar_features.all_events(start, end)),
+            ("visibility", lambda: visibility.all_events(start, end)),
+            ("asteroids", lambda: asteroids.all_events(start, end)),
+            ("bright_neo", lambda: close_approaches.bright_events(start, end)),
+            ("titan", lambda: titan.all_events(start, end))):
+        try:
+            with _step(key):
+                add(key, action())
+        except Exception as exc:               # noqa: BLE001
+            extra[f"{key}_error"] = str(exc)
 
     try:
-        events += jupiter_phenomena.all_events(start, end)
-    except Exception as exc:
-        extra["jupiter_phenomena_error"] = str(exc)
-
-    try:                                       # взаимные явления спутников
-        mutual_events, mutual_all = jupiter_mutual.all_events(start, end)
-        events += mutual_events
-        extra["jupiter_mutual"] = mutual_all
-    except Exception as exc:
+        with _step("jupiter_mutual"):
+            mutual_events, mutual_all = jupiter_mutual.all_events(start, end)
+            extra["jupiter_mutual"] = mutual_all
+            trace.count(найдено_явлений=len(mutual_all))
+            trace.note("в календарь идут только заметные перекрытия, "
+                       "наблюдаемые из России")
+            add("jupiter_mutual", mutual_events)
+    except Exception as exc:                   # noqa: BLE001
         extra["jupiter_mutual_error"] = str(exc)
 
     try:
-        events += lunar_features.all_events(start, end)
-    except Exception as exc:                       # нужны ядра ориентации Луны
-        extra["lunar_features_error"] = str(exc)
-    events += visibility.all_events(start, end)
-
-    try:
-        events += asteroids.all_events(start, end)
-    except Exception as exc:                       # CNEOS/Horizons могут не ответить
-        extra["asteroids_error"] = str(exc)
-
-    try:                                           # яркие NEO на год вперёд
-        events += close_approaches.bright_events(start, end)
-    except Exception as exc:
-        extra["bright_neo_error"] = str(exc)
-
-    try:
-        occultation_events, occultation_report = asteroid_occultations.build(start, end)
-        events += occultation_events
-        extra["asteroid_occultations"] = occultation_report
-    except Exception as exc:                       # лента предсказаний может не скачаться
+        with _step("asteroid_occultations"):
+            occultation_events, occultation_report = \
+                asteroid_occultations.build(start, end)
+            extra["asteroid_occultations"] = occultation_report
+            trace.count(кандидатов=len(occultation_report))
+            add("asteroid_occultations", occultation_events)
+    except Exception as exc:                   # noqa: BLE001
         extra["asteroid_occultations_error"] = str(exc)
 
     try:
-        events += titan.all_events(start, end)
-    except Exception as exc:                       # Horizons может быть недоступен
-        extra["titan_error"] = str(exc)
+        with _step("comets"):
+            comet_cal, comet_all, comet_table = comets.all_events(start, end)
+            extra["comets_all"] = comet_all
+            extra["comets_table"] = comet_table
+            trace.count(сближений_найдено=len(comet_all),
+                        комет_отобрано=len(comet_table))
+            add("comets", comet_cal)
+            try:
+                add("comets", comets.milestones(start, end))
+            except Exception as exc:           # noqa: BLE001
+                extra["comet_milestones_error"] = str(exc)
+    except Exception as exc:                   # noqa: BLE001
+        extra["comets_error"] = str(exc)
 
-    comet_cal, comet_all, comet_table = comets.all_events(start, end)
-    events += comet_cal
+    with _step("spaceflight"):
+        sf_events, sf_rejected = spaceflight.all_events(start, end)
+        extra["spaceflight_rejected"] = sf_rejected
+        for item in sf_rejected[:10]:
+            trace.reject(str(item.get("name", item)),
+                         str(item.get("reason", "не связан с МКС")))
+        add("spaceflight", sf_events)
+
     try:
-        events += comets.milestones(start, end)
-    except Exception as exc:
-        extra["comet_milestones_error"] = str(exc)
-    extra["comets_all"] = comet_all
-    extra["comets_table"] = comet_table
-
-    sf_events, sf_rejected = spaceflight.all_events(start, end)
-    events += sf_events
-    extra["spaceflight_rejected"] = sf_rejected
-
-    try:
-        events += iss.all_events(start, end)
-    except Exception as exc:
+        with _step("iss"):
+            add("iss", iss.all_events(start, end))
+    except Exception as exc:                   # noqa: BLE001
         extra["iss_error"] = str(exc)
 
+    before = len(events)
     events = [e for e in events if start <= e.when < end]
+    if before != len(events):
+        trace.note(f"вне границ месяца отброшено событий: {before - len(events)}")
     events.sort(key=lambda e: (e.display_time, e.text))
     return events, extra
 

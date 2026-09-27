@@ -122,10 +122,16 @@ def fetch(url: str, *, params: dict | None = None, data: dict | None = None,
     `ttl_hours=None` означает «кэш годен всегда» — так читаются файлы, которые
     обновляются вручную. `use_cache=False` заставляет сходить в сеть.
     """
+    from . import trace
+
+    clock = time.monotonic()
     key = _key(url, params, data)
     if use_cache:
         cached = read_cache(key, ttl_hours)
         if cached is not None:
+            trace.fetched(url, from_cache=True, size_bytes=len(cached.body),
+                          seconds=time.monotonic() - clock,
+                          status=cached.status)
             return cached
 
     attempts = cfg.NET_RETRIES if retries is None else retries
@@ -165,6 +171,9 @@ def fetch(url: str, *, params: dict | None = None, data: dict | None = None,
                             status=raw.status_code, headers=dict(raw.headers))
         if use_cache:
             write_cache(key, response)
+        trace.fetched(url, from_cache=False, size_bytes=len(response.body),
+                      seconds=time.monotonic() - clock,
+                      status=response.status)
         return response
 
     # Сеть не отдала свежие данные. Если на диске есть просроченный ответ,
@@ -172,6 +181,9 @@ def fetch(url: str, *, params: dict | None = None, data: dict | None = None,
     # а исключение посреди обновления Live обрушивает всю панель.
     stale = read_cache(key, None) if use_cache else None
     if stale is not None:
+        trace.note(f"{urlparse(url).netloc} не ответил, взят просроченный кэш")
+        trace.fetched(url, from_cache=True, size_bytes=len(stale.body),
+                      seconds=time.monotonic() - clock, status=stale.status)
         return stale
     if isinstance(last_error, NetworkError):
         raise last_error
