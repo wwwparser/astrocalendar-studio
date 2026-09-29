@@ -256,19 +256,25 @@ def mutual_approaches(start: dt.datetime, end: dt.datetime,
     return out
 
 
-# Соединения планет со звёздами. Порог зависит от звезды: яркую видно рядом
-# с планетой и на двух градусах, слабую имеет смысл упоминать только при
+# Соединения планет со звёздами. Порог зависит от блеска звезды: яркую видно
+# рядом с планетой и на двух градусах, слабую имеет смысл упоминать только при
 # тесном сближении, иначе календарь заполнят проходы мимо безымянных звёзд.
-STAR_CONJ_BRIGHT = (3.0, 2.0)     # звезда ярче +3,0ᵐ — расстояние до 2°
-STAR_CONJ_FAINT = (7.0, 1.0)      # от +3,0ᵐ до +7,0ᵐ — до 1°
+# Три ступени вместо двух предложил Станислав Короткий после того, как одна
+# ступень до +7,0ᵐ дала за октябрь два десятка проходов Марса по Раку.
+STAR_CONJ_STEPS = (
+    (3.0, 2.0),      # звезда ярче +3,0ᵐ — расстояние до 2°
+    (5.0, 1.0),      # от +3,0ᵐ до +5,0ᵐ — до 1°
+    (7.0, 0.5),      # от +5,0ᵐ до +7,0ᵐ — до 0,5°
+)
+STAR_CONJ_BRIGHT = STAR_CONJ_STEPS[0]
+STAR_CONJ_FAINTEST = STAR_CONJ_STEPS[-1]
 
 
 def star_conjunction_limit(star_mag: float) -> float:
     """Максимальное расстояние, при котором сближение идёт в календарь."""
-    if star_mag <= STAR_CONJ_BRIGHT[0]:
-        return STAR_CONJ_BRIGHT[1]
-    if star_mag <= STAR_CONJ_FAINT[0]:
-        return STAR_CONJ_FAINT[1]
+    for limit_mag, radius in STAR_CONJ_STEPS:
+        if star_mag <= limit_mag:
+            return radius
     return 0.0
 
 
@@ -293,7 +299,7 @@ def star_approaches(start: dt.datetime, end: dt.datetime) -> list[Event]:
     grid = ts_range(start - dt.timedelta(days=1), end + dt.timedelta(days=1), 60)
     grid_tt = grid.tt
     sun_alt = site.at(grid).observe(sun).apparent().altaz()[0].degrees
-    stars = bright_stars(mag_limit=STAR_CONJ_FAINT[0])
+    stars = bright_stars(mag_limit=STAR_CONJ_FAINTEST[0])
     margin = STAR_CONJ_BRIGHT[1] + 0.5
 
     out: list[Event] = []
@@ -370,23 +376,20 @@ def star_approaches(start: dt.datetime, end: dt.datetime) -> list[Event]:
 
 
 def _deduplicate_stars(events: list[Event]) -> list[Event]:
-    """Не больше одного сближения на планету за ночь — самое тесное.
+    """Одна пара планета–звезда за сутки: самое тесное сближение.
 
-    Без этого октябрь превращается в двадцать строк подряд: Марс идёт через
-    Рак и всю дорогу проходит мимо безымянных звёзд шестой величины. Каждая
-    такая строка по правилу законна, но вместе они вытесняют из выпуска всё
-    остальное.
+    Планета идёт мимо звезды медленно, и минимум расстояния попадает в
+    несколько соседних ночей. Это одно событие, а не три.
 
-    Сближения с яркими звёздами из ограничения выведены: их мало, у них есть
-    имена, и именно ради них правило и задумано.
+    Ограничения «не больше одной звезды на планету за ночь» здесь нет:
+    отбор целиком задан порогами `STAR_CONJ_STEPS`, и если Марс за ночь
+    минует две звезды достаточно тесно, в календаре будут обе.
     """
-    kept, best = [], {}
+    best: dict[tuple, Event] = {}
     for event in sorted(events, key=lambda e: e.meta["sep_deg"]):
-        if event.meta["star_mag"] <= STAR_CONJ_BRIGHT[0]:
-            kept.append(event)
-            continue
-        best.setdefault((event.meta["planet"], event.when.date()), event)
-    return sorted(kept + list(best.values()), key=lambda e: e.when)
+        best.setdefault((event.meta["planet"], event.meta["hip"],
+                         event.when.date()), event)
+    return sorted(best.values(), key=lambda e: e.when)
 
 
 def greatest_brilliancy(start: dt.datetime, end: dt.datetime) -> list[Event]:

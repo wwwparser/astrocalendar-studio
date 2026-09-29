@@ -275,12 +275,15 @@ def test_planet_pairs_are_looked_for_up_to_five_degrees():
 
 
 def test_star_conjunction_thresholds_depend_on_the_star():
+    """Три ступени: ярче +3,0ᵐ — 2°, до +5,0ᵐ — 1°, до +7,0ᵐ — полградуса."""
     from astrocal.events.planets import star_conjunction_limit
 
     assert star_conjunction_limit(2.0) == 2.0
     assert star_conjunction_limit(3.0) == 2.0
+    assert star_conjunction_limit(3.5) == 1.0
     assert star_conjunction_limit(5.0) == 1.0
-    assert star_conjunction_limit(7.0) == 1.0
+    assert star_conjunction_limit(5.5) == 0.5
+    assert star_conjunction_limit(7.0) == 0.5
     assert star_conjunction_limit(7.5) == 0.0
 
 
@@ -295,9 +298,8 @@ def test_planet_star_conjunctions_are_found_and_capped():
     for event in found:
         assert event.meta["sep_deg"] <= \
             planets.star_conjunction_limit(event.meta["star_mag"])
-    # не больше одной слабой звезды на планету за ночь
-    faint = [e for e in found if e.meta["star_mag"] > 3.0]
-    keys = [(e.meta["planet"], e.when.date()) for e in faint]
+    # одна пара планета–звезда за сутки, без дублей в соседние часы
+    keys = [(e.meta["planet"], e.meta["hip"], e.when.date()) for e in found]
     assert len(keys) == len(set(keys))
 
 
