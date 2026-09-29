@@ -233,7 +233,8 @@ def conjunctions_with_deep_sky(start: dt.datetime, end: dt.datetime,
     """
     from skyfield.api import Star
 
-    from ..catalogs import angular_distance_deg, deep_sky, dso_common_name
+    from ..catalogs import (angular_distance_deg, deep_sky, dso_common_name,
+                            is_messier)
 
     ts = timescale()
     grid = ts_range(start - dt.timedelta(hours=12), end + dt.timedelta(hours=12), 30)
@@ -289,7 +290,7 @@ def conjunctions_with_deep_sky(start: dt.datetime, end: dt.datetime,
                 sources=["Skyfield/DE440s", "OpenNGC"],
                 precision="hour",
                 meta={"object": obj.Name, "sep_deg": best,
-                      "object_mag": float(obj.mag), "messier": bool(obj.messier)},
+                      "object_mag": float(obj.mag), "messier": is_messier(obj.messier)},
             ))
     return _closest_per_night(out)
 

@@ -16,7 +16,7 @@ import numpy as np
 
 from ..core import Event, body, constellation_at, earth, observer, timescale
 from ..apparent import planet_label
-from ..fmt import magnitude, ru_constellation
+from ..fmt import magnitude, number, ru_constellation
 from ..horizons import CODES, query, rows
 
 TITAN_MAG = 8.4    # среднее значение, Титан меняется в пределах 8.2–9.0m
@@ -94,12 +94,16 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
         sep = float(np.hypot(x[i], y[i]))
         out.append(Event(
             when=when,
+            # Порядок слов и разделение от центра диска — как принято у
+            # наблюдателей: сначала на сколько отстоит, потом в какую сторону.
+            # Расстояние до края диска не теряется, оно в протоколе расчёта.
             text=(f"Спутник Титан ({magnitude(TITAN_MAG)}) расположен "
-                  f"{'севернее' if north else 'южнее'} Сатурна "
-                  f"({planet_label('saturn', t)}) в {limb_text(sep, t)}, "
+                  f"в {number(sep)}″ {'севернее' if north else 'южнее'} "
+                  f"Сатурна ({planet_label('saturn', t)}), "
                   f"созвездие {const}"),
             category="saturn_moons",
-            computed=(f"смена знака ΔRA·cosδ Титан–Сатурн; разделение от центра "
+            computed=(f"смена знака ΔRA·cosδ Титан–Сатурн; Титан в "
+                      f"{limb_text(sep, t)}; разделение от центра "
                       f"диска {sep:.0f}″, от края диска "
                       f"{sep - saturn_radius_arcsec(t):.0f}″, "
                       f"Δ по склонению {y[i]:+.0f}″; "

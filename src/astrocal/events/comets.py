@@ -29,7 +29,9 @@ from skyfield.constants import GM_SUN_Pitjeva_2005_km3_s2 as GM_SUN
 from skyfield.data import mpc
 
 from .. import config as cfg
-from ..catalogs import STAR_NAMES_RU, angular_distance_deg, bright_stars, deep_sky
+from .. import crossmatch
+from ..catalogs import (STAR_NAMES_RU, angular_distance_deg, bright_stars,
+                        deep_sky, is_messier)
 from ..core import (Event, body, constellation_at, earth, local_minima, observer,
                     refine_minimum, southern_observer, timescale, to_msk, ts_range)
 from ..fmt import angle_deg, ru_constellation
@@ -324,6 +326,7 @@ def _approach_events(row, grid, ra, dec, mag, catalog, kind: str,
                       "object_mag": float(obj.magnitude if kind == "star" else obj.mag),
                       "object": f"HIP {int(obj.hip)}" if kind == "star" else obj.Name,
                       "kind": kind,
+                      "messier": kind == "dso" and is_messier(obj.messier),
                       "comet_mag": float(np.interp(t.tt, grid_tt, mag)),
                       "magnitude_observed": entry is not None,
                       "magnitude_source": entry.source if entry else "",
@@ -368,6 +371,12 @@ def interesting(meta: dict) -> bool:
     if not meta.get("magnitude_observed"):
         return False
     sep, mag = meta["sep_deg"], meta["object_mag"]
+    # без известного блеска кометы новые правила не применимы: они все
+    # опираются на него, и «неизвестно» не должно означать «достаточно ярко»
+    comet_mag = meta.get("comet_mag", float("inf"))
+    if crossmatch.by_new_rules(comet_mag, meta["kind"], mag,
+                               bool(meta.get("messier")), sep):
+        return True
     if meta["kind"] == "star":
         # яркая звезда — интересно и на градусе, слабая — только при тесном проходе
         return (mag <= 4.5 and sep <= 1.0) or (mag <= 6.5 and sep <= 0.5)

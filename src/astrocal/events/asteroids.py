@@ -17,7 +17,9 @@ import datetime as dt
 import numpy as np
 
 from .. import config as cfg
-from ..catalogs import (STAR_NAMES_RU, angular_distance_deg, bright_stars, deep_sky)
+from .. import crossmatch
+from ..catalogs import (STAR_NAMES_RU, angular_distance_deg, bright_stars,
+                        deep_sky, is_messier)
 from ..core import (Event, body, constellation_at, earth, observer,
                     southern_observer, timescale)
 from ..fmt import angle_deg, ru_constellation
@@ -95,8 +97,11 @@ def approaches(start: dt.datetime, end: dt.datetime) -> list[Event]:
     ts = timescale()
     site = observer()
     south = southern_observer()
-    stars = bright_stars(mag_limit=4.5)
-    dso = deep_sky(mag_limit=9.0)
+    # Каталоги берём настолько глубокими, насколько требуют правила отбора:
+    # звёзды до +7,0ᵐ, объекты глубокого космоса — по общему пределу, чтобы
+    # в выборку попали все объекты Мессье и достаточно NGC/IC.
+    stars = bright_stars(mag_limit=crossmatch.STAR_OBJECT_LIMIT)
+    dso = deep_sky()
     out: list[Event] = []
 
     for number, name_ru in BRIGHT_ASTEROIDS.items():
@@ -104,7 +109,7 @@ def approaches(start: dt.datetime, end: dt.datetime) -> list[Event]:
             times, ra, dec, mag = track(number, start, end)
         except Exception:
             continue
-        if not len(times) or np.nanmin(mag) > MAG_LIMIT:
+        if not len(times) or np.nanmin(mag) > crossmatch.BODY_MAG_LIMIT:
             continue
 
         grid = ts.from_datetimes(times)
@@ -147,14 +152,20 @@ def approaches(start: dt.datetime, end: dt.datetime) -> list[Event]:
                         confidence="средняя",
                         computed=(f"эфемерида JPL Horizons с шагом 1 час; наименьшее "
                                   f"за месяц угловое расстояние на тёмном небе "
-                                  f"{d[i] * 60:.1f}′"),
+                                  f"{d[i] * 60:.1f}′; отбор: "
+                                  + crossmatch.rule_name(
+                                      float(mag[i]), kind,
+                                      float(obj.magnitude if kind == "star"
+                                            else obj.mag),
+                                      kind == "dso" and is_messier(obj.messier),
+                                      float(d[i]))),
                         sources=["JPL Horizons", "Hipparcos / OpenNGC"],
                         precision="hour",
                         meta={"number": number, "sep_deg": float(d[i]),
                               "object_mag": float(obj.magnitude if kind == "star"
                                                   else obj.mag),
                               "kind": kind, "mag": float(mag[i]),
-                              "messier": bool(kind == "dso" and obj.messier)},
+                              "messier": kind == "dso" and is_messier(obj.messier)},
                     ))
     return _deduplicate([e for e in out if interesting(e.meta)])
 
@@ -165,10 +176,18 @@ def _star_at(ra_deg: float, dec_deg: float):
 
 
 def interesting(meta: dict) -> bool:
-    """Что из проходов астероида достойно строки в календаре."""
-    if meta["mag"] > MAG_LIMIT:
+    """Что из проходов астероида достойно строки в календаре.
+
+    Два набора правил по «или»: общие пороги для малых тел (модуль
+    `crossmatch`) и прежние, более щедрые по расстоянию у очень ярких
+    объектов.
+    """
+    sep, obj_mag, mag = meta["sep_deg"], meta["object_mag"], meta["mag"]
+    if crossmatch.by_new_rules(mag, meta["kind"], obj_mag,
+                               bool(meta["messier"]), sep):
+        return True
+    if mag > MAG_LIMIT:
         return False
-    sep, obj_mag = meta["sep_deg"], meta["object_mag"]
     if meta["kind"] == "star":
         return ((obj_mag <= 4.0 and sep <= 2.5) or (obj_mag <= 6.0 and sep <= 1.0)
                 or sep <= 0.3)

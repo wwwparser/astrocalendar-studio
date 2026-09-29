@@ -176,7 +176,11 @@ def all_events(start: dt.datetime, end: dt.datetime,
         text = describe_combination(pair)
         if text is None:
             continue
-        moment = pair["start"] + (pair["end"] - pair["start"]) / 2
+        # Публикуем начало совпадения, а не его середину. Середина,
+        # округлённая до часа, однажды указала на конец явления: в календаре
+        # стояло 04:00, когда тень Ио уже сходила с диска, а спутник вступил
+        # на диск часом раньше. Для такого события важен интервал целиком.
+        moment = pair["start"]
         if not (start <= moment < end) or not _observable(moment):
             continue
         t = ts.from_datetime(moment)
@@ -185,14 +189,15 @@ def all_events(start: dt.datetime, end: dt.datetime,
         out.append(Event(
             when=moment,
             text=(f"{text} ({magnitude(planet_magnitude('jupiter', t))}) "
-                  f"в созвездии {const}"),
+                  f"в созвездии {const}, с {pair['start']:%H:%M} "
+                  f"до {pair['end']:%H:%M}"),
             category="jupiter_phenomena",
             rank="interesting",
             computed=(f"совпадение по времени {pair['start']:%d.%m %H:%M}–"
                       f"{pair['end']:%H:%M} МСК; расчёт проекции спутников на диск "
                       f"по эфемеридам jup380s"),
             sources=["Skyfield + JPL jup380s"],
-            precision="hour",
+            precision="minute",
             meta={"phenomenon": "combination"},
         ))
         used.add(id(pair["a"]))

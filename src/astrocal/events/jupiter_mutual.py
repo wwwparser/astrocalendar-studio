@@ -24,6 +24,18 @@
 поэтому у настоящего затмения есть полутеневая фаза, и начинается оно чуть
 раньше, а заканчивается чуть позже расчётного. Это записано в протоколе
 события, а не спрятано.
+
+**Про время затмений.** Покрытие мы видим тогда, когда оно происходит по
+земным часам: это геометрия со стороны Земли, и момент события — сразу
+наблюдаемый. С затмением иначе. Тень падает на спутник у Юпитера, а до нас
+свет идёт около сорока девяти минут, и наблюдатель увидит явление настолько
+же позже. Поэтому затмение считается в два приёма: сначала геометрия обоих
+спутников на один и тот же момент (а не «как это видно с Солнца»), потом
+найденные моменты сдвигаются на время хода света от затмеваемого спутника до
+Земли. Без этой поправки расчёт расходился с наблюдением на несколько минут.
+
+Тень, покинувшая один спутник, доходит до другого за секунду-две — это ниже
+шага сетки, и такой поправки здесь нет.
 """
 from __future__ import annotations
 
@@ -33,7 +45,7 @@ from itertools import permutations
 
 import numpy as np
 
-from ..core import Event, body, earth, to_msk, ts_range
+from ..core import Event, earth, timescale, to_msk, ts_range
 from .jupiter_moons import MOON_RU, MOONS, satellite
 
 # Средние радиусы, км (IAU)
@@ -55,6 +67,7 @@ class MutualEvent:
     min_separation_arcsec: float
     obscuration: float           # доля закрытого диска, 0…1
     observable: bool             # виден ли момент максимума из России
+    light_minutes: float = 0.0   # поправка за ход света до Земли, минуты
 
     @property
     def duration_minutes(self) -> float:
@@ -88,22 +101,41 @@ def overlap_fraction(separation: float, radius_front: float,
     return float(min(1.0, area / (np.pi * r2 * r2)))
 
 
-def _positions(grid, origin, apparent: bool = True):
-    """Векторы на спутники от наблюдателя, км, и расстояния до них.
+LIGHT_KM_S = 299792.458
 
-    Для взгляда со стороны Солнца видимое положение не считается: поправка за
-    отклонение света требует Земли как наблюдателя, и Skyfield на таком запросе
-    выходит за пределы эфемериды. Геометрии тени достаточно астрометрического
-    положения с учётом времени распространения света — его `observe` уже даёт.
-    """
+
+def _positions_from_earth(grid):
+    """Видимые положения спутников с Земли: готовая геометрия покрытий."""
     vectors, distances = {}, {}
     for name, code in MOONS.items():
-        position = origin.at(grid).observe(satellite(code))
-        if apparent:
-            position = position.apparent()
+        position = earth().at(grid).observe(satellite(code)).apparent()
         vectors[name] = position.position.km
         distances[name] = np.linalg.norm(vectors[name], axis=0)
     return vectors, distances
+
+
+def _positions_from_sun(grid):
+    """Направления Солнце→спутник, взятые на один и тот же момент.
+
+    Именно так падает тень: оба спутника берутся в один момент времени.
+    `observe` со стороны Солнца дал бы каждому своё запаздывание — это ответ
+    на другой вопрос, «что увидел бы наблюдатель на Солнце».
+    """
+    from ..core import planets
+
+    sun = planets()["sun"].at(grid).position.km
+    vectors, distances = {}, {}
+    for name, code in MOONS.items():
+        vectors[name] = satellite(code).at(grid).position.km - sun
+        distances[name] = np.linalg.norm(vectors[name], axis=0)
+    return vectors, distances
+
+
+def light_time_to_earth(grid, moon: str):
+    """Время хода света от спутника до Земли, сутки."""
+    distance = np.linalg.norm(
+        earth().at(grid).observe(satellite(MOONS[moon])).position.km, axis=0)
+    return distance / LIGHT_KM_S / 86400.0
 
 
 def _separations(vectors, distances, front: str, back: str):
@@ -140,10 +172,10 @@ def find(start: dt.datetime, end: dt.datetime,
     from .jupiter_moons import _observable_mask
 
     grid = ts_range(start, end, step_minutes)
-    earth_vectors, earth_distances = _positions(grid, earth())
-    sun_vectors, sun_distances = _positions(grid, body("sun"),
-                                            apparent=False)
+    earth_vectors, earth_distances = _positions_from_earth(grid)
+    sun_vectors, sun_distances = _positions_from_sun(grid)
     observable = _observable_mask(grid)
+    ts = timescale()
 
     found: list[MutualEvent] = []
     for first, second in permutations(MOONS, 2):
@@ -159,6 +191,11 @@ def find(start: dt.datetime, end: dt.datetime,
             if not mask.any():
                 continue
 
+            # затмение происходит у Юпитера, а видим мы его почти на час
+            # позже: моменты сдвигаются на время хода света до Земли
+            delay = (light_time_to_earth(grid, second)
+                     if kind == "eclipse" else np.zeros(len(grid)))
+
             for begin, finish in _episodes(mask):
                 window = slice(begin, finish + 1)
                 index = begin + int(np.argmin(separation[window]))
@@ -167,15 +204,18 @@ def find(start: dt.datetime, end: dt.datetime,
                     float(radius_back[index]))
                 if fraction <= 0.01:
                     continue
+
+                def seen(position: int) -> dt.datetime:
+                    return to_msk(ts.tt_jd(grid[position].tt + delay[position]))
+
                 found.append(MutualEvent(
                     kind=kind, front=first, back=second,
-                    start=to_msk(grid[begin]),
-                    middle=to_msk(grid[index]),
-                    end=to_msk(grid[finish]),
+                    start=seen(begin), middle=seen(index), end=seen(finish),
                     min_separation_arcsec=float(
                         np.degrees(separation[index]) * 3600.0),
                     obscuration=fraction,
-                    observable=bool(observable[index])))
+                    observable=bool(observable[index]),
+                    light_minutes=float(delay[index] * 1440.0)))
     return sorted(found, key=lambda item: item.middle)
 
 
@@ -186,10 +226,11 @@ def to_event(item: MutualEvent) -> Event:
                else "взаимное затмение")
     percent = f"{item.obscuration * 100:.0f} %"
     return Event(
-        when=item.middle,
+        when=item.start,
         text=(f"Спутники Юпитера: {item.title} "
               f"({kind_ru}), закрыто {percent} диска, "
-              f"{number(item.duration_minutes)} мин"),
+              f"с {item.start:%H:%M} до {item.end:%H:%M}, "
+              f"максимум в {item.middle:%H:%M}"),
         category="jupiter_mutual",
         confidence="средняя",
         rank="interesting" if item.observable else "optional",
@@ -201,6 +242,9 @@ def to_event(item: MutualEvent) -> Event:
             f"{item.start:%H:%M} до {item.end:%H:%M} МСК"
             + ("; из Москвы в максимуме наблюдаемо"
                if item.observable else "; из Москвы в максимуме не наблюдаемо")
+            + (f"; моменты указаны как их видно с Земли: к расчёту у Юпитера "
+               f"добавлено время хода света {item.light_minutes:.0f} мин"
+               if item.kind == "eclipse" else "")
             + ("; Солнце считается точечным, поэтому полутеневая фаза "
                "затмения начинается раньше и заканчивается позже расчётной"
                if item.kind == "eclipse" else "")),

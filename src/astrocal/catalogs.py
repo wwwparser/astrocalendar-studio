@@ -163,6 +163,17 @@ def deep_sky_extended(mag_limit: float = None) -> pd.DataFrame:
                "ra_degrees", "dec_degrees", "Const"]].reset_index(drop=True)
 
 
+def is_messier(value) -> bool:
+    """Есть ли у объекта номер Мессье.
+
+    Через `bool()` эту проверку делать нельзя: в колонке отсутствующее
+    значение — не None, а NaN, и `bool(nan)` истинно. Из-за этого все
+    объекты NGC/IC какое-то время считались мессьеровскими и проходили отбор
+    по самому мягкому правилу.
+    """
+    return isinstance(value, str) and bool(value.strip())
+
+
 def angular_distance_deg(ra1, dec1, ra2, dec2):
     """Гаверсинус: расстояние между точками на сфере, градусы. Векторизуется."""
     ra1, dec1, ra2, dec2 = (np.radians(np.asarray(v, dtype=float))

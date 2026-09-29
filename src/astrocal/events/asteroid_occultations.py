@@ -269,7 +269,7 @@ def build(start: dt.datetime, end: dt.datetime, star_mag_limit: float = 6.0,
                         if np.isfinite(c.asteroid_mag) else "")
         drop = (", падение блеска " + number(c.magnitude_drop) + "ᵐ"
                 if np.isfinite(c.magnitude_drop) else "")
-        duration = (", максимум " + number(c.max_duration_s) + " с"
+        duration = (", длительность до " + number(c.max_duration_s) + " с"
                     if np.isfinite(c.max_duration_s) else "")
         width = (f", полоса шириной {c.diameter_km:.0f} км — "
                  if np.isfinite(c.diameter_km) and c.diameter_km >= 1

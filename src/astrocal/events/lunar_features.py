@@ -21,6 +21,7 @@ from functools import lru_cache
 import numpy as np
 
 from .. import config as cfg
+from ..fmt import number
 from ..core import (Event, body, find_zero, observer, planets, southern_observer,
                     timescale, to_msk, ts_range)
 
@@ -91,15 +92,22 @@ def sun_colongitude(t) -> float:
 def libration(t) -> tuple[float, float]:
     """Либрация по долготе и широте, градусы.
 
-    Положительная долгота открывает восточный лимб, положительная широта —
-    северный.
+    Положительная долгота открывает восточный лимб (Море Краевое, Море
+    Смита), положительная широта — северный (район кратера Пири).
+
+    Долготу обязательно приводим к диапазону ±180°: `frame_latlon` отдаёт её
+    в 0…360°, и либрация в −0,05° приходит как 359,95°. Без свёртки крошечный
+    наклон выглядел как рекордный, и в календарь попадали несуществующие
+    события «открыт западный край (359.9°)», а настоящие максимумы терялись.
     """
     frame = moon_frame()
     if frame is None:
         raise RuntimeError("нет ядра ориентации Луны")
     position = planets()["moon"].at(t).observe(planets()["earth"]).apparent()
     lat, lon, _distance = position.frame_latlon(frame)
-    return -float(lon.degrees), -float(lat.degrees)
+    longitude = (-float(lon.degrees) + 180.0) % 360.0 - 180.0
+    latitude = (-float(lat.degrees) + 180.0) % 360.0 - 180.0
+    return longitude, latitude
 
 
 def _observable(when: dt.datetime, min_altitude: float = 10.0) -> tuple[bool, float]:
@@ -201,8 +209,11 @@ def librations(start: dt.datetime, end: dt.datetime) -> list[Event]:
             longitude_libration, latitude_libration = values[index]
             out.append(Event(
                 when=when,
-                text=(f"Благоприятная либрация: открыт {edge} край лунного диска "
-                      f"({series[index]:.1f}°), видны {features}"),
+                text=(f"Благоприятная либрация: открыт {edge} край лунного "
+                      f"диска, либрация по "
+                      f"{'долготе' if axis == 0 else 'широте'} "
+                      f"{number(values[index][axis], 1, sign=True)}°, "
+                      f"видны {features}"),
                 category="lunar_feature",
                 confidence="высокая",
                 rank="interesting",
