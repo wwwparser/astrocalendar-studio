@@ -264,7 +264,7 @@ def mutual_approaches(start: dt.datetime, end: dt.datetime,
 STAR_CONJ_STEPS = (
     (3.0, 2.0),      # звезда ярче +3,0ᵐ — расстояние до 2°
     (5.0, 1.0),      # от +3,0ᵐ до +5,0ᵐ — до 1°
-    (7.0, 0.5),      # от +5,0ᵐ до +7,0ᵐ — до 0,5°
+    (6.0, 0.5),      # от +5,0ᵐ до +6,0ᵐ — до 0,5°
 )
 STAR_CONJ_BRIGHT = STAR_CONJ_STEPS[0]
 STAR_CONJ_FAINTEST = STAR_CONJ_STEPS[-1]

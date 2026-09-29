@@ -275,7 +275,7 @@ def test_planet_pairs_are_looked_for_up_to_five_degrees():
 
 
 def test_star_conjunction_thresholds_depend_on_the_star():
-    """Три ступени: ярче +3,0ᵐ — 2°, до +5,0ᵐ — 1°, до +7,0ᵐ — полградуса."""
+    """Три ступени: ярче +3,0ᵐ — 2°, до +5,0ᵐ — 1°, до +6,0ᵐ — полградуса."""
     from astrocal.events.planets import star_conjunction_limit
 
     assert star_conjunction_limit(2.0) == 2.0
@@ -283,8 +283,10 @@ def test_star_conjunction_thresholds_depend_on_the_star():
     assert star_conjunction_limit(3.5) == 1.0
     assert star_conjunction_limit(5.0) == 1.0
     assert star_conjunction_limit(5.5) == 0.5
-    assert star_conjunction_limit(7.0) == 0.5
-    assert star_conjunction_limit(7.5) == 0.0
+    assert star_conjunction_limit(6.0) == 0.5
+    # звёзды слабее +6,0ᵐ в календарь не идут вовсе
+    assert star_conjunction_limit(6.5) == 0.0
+    assert star_conjunction_limit(7.0) == 0.0
 
 
 def test_planet_star_conjunctions_are_found_and_capped():
@@ -464,3 +466,14 @@ def test_markdown_counts_the_events():
 
     text = render_markdown(_sample_events(), 2026, 10)
     assert "Событий в выпуске: 3" in text
+
+
+def test_faint_stars_no_longer_flood_october():
+    """До отсечки на +6,0ᵐ Марс давал два десятка строк за месяц."""
+    from astrocal.events import planets
+
+    start, end = cfg.month_bounds(2026, 10)
+    found = planets.star_approaches(start, end)
+    assert len(found) <= 6, [e.text for e in found]
+    for event in found:
+        assert event.meta["star_mag"] <= 6.0
