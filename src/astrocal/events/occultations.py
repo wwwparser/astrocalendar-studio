@@ -269,13 +269,85 @@ def star_candidates(start: dt.datetime, end: dt.datetime,
     return found
 
 
+# Звёзды, которые наблюдатель узнаёт не по имени, а по скоплению. Луна,
+# закрывая Альциону, проходит через все Плеяды, и «покрытие звезды Альциона»
+# описывает происходящее хуже, чем «покрытие скопления Плеяды»: про Альциону
+# знают немногие, про Плеяды — все.
+STAR_CLUSTERS = {
+    17702: "Плеяды", 17499: "Плеяды", 17573: "Плеяды", 17531: "Плеяды",
+    17608: "Плеяды", 17847: "Плеяды", 17851: "Плеяды", 17579: "Плеяды",
+    20889: "Гиады", 20205: "Гиады", 20455: "Гиады", 20648: "Гиады",
+    20894: "Гиады", 21029: "Гиады",
+}
+
+# Доля регионов России, начиная с которой перечислять их бессмысленно
+NATIONWIDE_SHARE = 0.7
+
+
+def occultation_start(band, lat, lon, regions_hit):
+    """Момент первого контакта на территории России.
+
+    В календаре стоит начало покрытия, а не момент наименьшего
+    геоцентрического расстояния: наблюдателю нужно знать, когда наводить
+    трубу, а минимум приходится на середину явления и часто на другую
+    долготу.
+    """
+    local = russian_mask(lat, lon, band["mask"], regions_hit)
+    first = band["first_idx"][local & (band["first_idx"] >= 0)]
+    if not len(first):
+        return None
+    return band["times"][int(first.min())]
+
+
+def cluster_band(cluster: str, t_center):
+    """Объединённая полоса покрытия по всем звёздам скопления.
+
+    Луна закрывает Плеяды не одной звездой: пока над Якутией за лимб уходит
+    Альциона, над Поволжьем скрывается Электра. Полоса по одной звезде узкая
+    и даёт неверную картину — в календаре стояло бы «видно в Сибири», тогда
+    как скопление Луна проходит почти над всей страной.
+    """
+    from skyfield.api import Star
+
+    from ..catalogs import bright_stars
+
+    hips = [hip for hip, name in STAR_CLUSTERS.items() if name == cluster]
+    stars = bright_stars(mag_limit=7.0)
+    stars = stars[stars.hip.isin(hips)]
+
+    merged = None
+    for _index, row in stars.iterrows():
+        star = Star(ra_hours=float(row.ra_degrees) / 15.0,
+                    dec_degrees=float(row.dec_degrees))
+        band = visibility_band(t_center, star=star)
+        if merged is None:
+            merged = {key: value.copy() if hasattr(value, "copy") else value
+                      for key, value in band.items()}
+            continue
+        fresh = band["mask"] & ~merged["mask"]
+        merged["mask"] = merged["mask"] | band["mask"]
+        # первый контакт по скоплению — самый ранний из всех звёзд
+        earlier = (band["first_idx"] >= 0) & (
+            (merged["first_idx"] < 0) | (band["first_idx"] < merged["first_idx"]))
+        merged["first_idx"] = np.where(earlier, band["first_idx"],
+                                       merged["first_idx"])
+        merged["last_idx"] = np.maximum(merged["last_idx"], band["last_idx"])
+        merged["sun_alt"] = np.where(fresh, band["sun_alt"], merged["sun_alt"])
+    return merged
+
+
 def build_stars(start: dt.datetime, end: dt.datetime):
     """Покрытия ярких звёзд Луной с полосой видимости."""
     from .moon import illum_and_waxing
 
     events, report = [], []
     for cand in star_candidates(start, end):
-        band = visibility_band(cand["t"], star=cand["star"])
+        # у члена известного скопления полоса считается по всему скоплению
+        cluster = STAR_CLUSTERS.get(cand["hip"])
+        band = (cluster_band(cluster, cand["t"]) if cluster
+                else visibility_band(cand["t"], star=cand["star"]))
+        if band is None:
+            band = visibility_band(cand["t"], star=cand["star"])
         lat, lon, mask = band["lat"], band["lon"], band["mask"]
         if not mask.any():
             continue
@@ -290,31 +362,47 @@ def build_stars(start: dt.datetime, end: dt.datetime):
                            "extent": bounds(lat, lon, mask), "daytime": False})
             continue
 
-        frac, waxing = illum_and_waxing(cand["t"])
+        # в календаре — момент первого контакта над Россией
+        contact = occultation_start(band, lat, lon, ru)
+        when = to_msk(contact) if contact is not None else cand["when"]
+        moment = contact if contact is not None else cand["t"]
+        if not (start <= when < end):
+            continue
+
+        frac, waxing = illum_and_waxing(moment)
         const = ru_constellation(constellation_at()(
-            earth().at(cand["t"]).observe(cand["star"]).apparent()))
-        label = (f"звезды {cand['name']}" if cand["name"]
-                 else f"звезды HIP {cand['hip']}")
+            earth().at(moment).observe(cand["star"]).apparent()))
         sky = sky_by_region(band, lat, lon, ru)
-        where = "видимое " + (describe_sky(sky) if sky else describe(ru))
+        nationwide = len(ru) >= NATIONWIDE_SHARE * len(RU_REGIONS)
+        where = ("видимое почти со всей территории России" if nationwide
+                 else "видимое " + (describe_sky(sky) if sky else describe(ru)))
 
         daytime = daytime_over_russia(band, lat, lon, mask, ru)
 
-        text = (f"Покрытие {label} ({magnitude(cand['mag'])}) Луной "
-                f"({moon_label(cand['t'], frac, waxing)}) в созвездии {const}, "
-                f"{where}")
+        if cluster:
+            text = (f"Тесное соединение и покрытие звёздного скопления "
+                    f"{cluster} Луной ({moon_label(moment, frac, waxing)}) "
+                    f"в созвездии {const}, {where}")
+        else:
+            label = (f"звезды {cand['name']}" if cand["name"]
+                     else f"звезды HIP {cand['hip']}")
+            text = (f"Покрытие {label} ({magnitude(cand['mag'])}) Луной "
+                    f"({moon_label(moment, frac, waxing)}) в созвездии "
+                    f"{const}, {where}")
 
         extent = bounds(lat, lon, mask)
         events.append(Event(
-            when=cand["when"], text=text, category="occultation",
+            when=when, text=text, category="occultation",
             computed=(f"минимум геоцентрического расстояния Луна–HIP {cand['hip']}: "
-                      f"{cand['geo_sep']:.3f}°; полоса найдена сеткой 2° по всей Земле "
+                      f"{cand['geo_sep']:.3f}° в {cand['when']:%d.%m %H:%M} МСК; "
+                      f"в календаре момент первого контакта над Россией; "
+                      f"полоса найдена сеткой 2° по всей Земле "
                       f"({extent.get('points', 0)} узлов)"),
             sources=["Skyfield/DE440s", "Hipparcos", "геометрия покрытия на сетке ITRS"],
             precision="minute",
             meta={"hip": cand["hip"], "band": extent},
         ))
-        report.append({"planet": f"HIP {cand['hip']}", "when": cand["when"],
+        report.append({"planet": f"HIP {cand['hip']}", "when": when,
                        "geo_sep": cand["geo_sep"], "ru": ru, "world": world,
                        "extent": extent, "daytime": daytime})
     return events, report

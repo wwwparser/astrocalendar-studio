@@ -46,13 +46,17 @@ def illuminated_fraction(name: str, t) -> float:
     return float(almanac.fraction_illuminated(planets(), name, t))
 
 
-def format_diameter(arcsec: float) -> str:
+def format_diameter(arcsec: float, minutes_allowed: bool = True) -> str:
     """31′28″ для Луны и Солнца, 3,7″ для всего остального.
 
     Луна и Солнце — единственные тела, у которых диаметр измеряется минутами;
     писать «1888″» вместо «31′28″» формально верно, но читателю бесполезно.
+
+    У планет наоборот: диаметр всегда в секундах, даже когда переваливает за
+    минуту. Венера в нижнем соединении вырастает до 61″, и «1′1″» в строке
+    рядом с «D=19,7″» у Сатурна читается как другая величина.
     """
-    if arcsec >= 60.0:
+    if arcsec >= 60.0 and minutes_allowed:
         minutes = int(arcsec // 60)
         seconds = arcsec - minutes * 60
         return f"{minutes}′{seconds:.0f}″"
@@ -81,10 +85,14 @@ def planet_label(name: str, t, magnitude_value: float | None = None) -> str:
         from .magnitudes import planet_magnitude
         magnitude_value = planet_magnitude(name, t)
     parts.append(magnitude(magnitude_value))
-    parts.append(f"D={format_diameter(angular_diameter_arcsec(name, t))}")
+    parts.append("D=" + format_diameter(
+        angular_diameter_arcsec(name, t), minutes_allowed=False))
     if name in PHASE_SHOWN:
         fraction = illuminated_fraction(name, t)
-        parts.append(f"Ф={number(fraction, 2)}")
+        # У Венеры в нижнем соединении освещено меньше процента диска:
+        # «Ф=0,01» здесь неотличимо от «Ф=0,006», а разница — вдвое.
+        digits = 3 if fraction < 0.05 else 2
+        parts.append(f"Ф={number(fraction, digits)}")
     return ", ".join(parts)
 
 

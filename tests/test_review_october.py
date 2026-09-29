@@ -203,3 +203,143 @@ def test_mutual_titles_use_the_accusative():
                        min_separation_arcsec=0.5, obscuration=0.8,
                        observable=True)
     assert item.title == "Ио затмевает Европу"
+
+
+# ---------------------------------------------------- вторая порция замечаний
+
+
+def test_jupiter_magnitude_stands_next_to_the_planet():
+    """Блеск уезжал в конец фразы и выглядел как блеск тени."""
+    from astrocal.events import jupiter_phenomena
+
+    start = dt.datetime(2026, 10, 1, tzinfo=cfg.MSK)
+    end = dt.datetime(2026, 11, 1, tzinfo=cfg.MSK)
+    events = jupiter_phenomena.all_events(start, end)
+    assert events
+    for event in events:
+        assert "Юпитера (V=" in event.text
+        assert "тенью (V=" not in event.text
+
+
+def test_inferior_conjunction_states_the_gap_from_the_sun():
+    """Долготы совпали, но просвет в шесть градусов остаётся."""
+    from astrocal.events import planets
+
+    start = dt.datetime(2026, 10, 1, tzinfo=cfg.MSK)
+    end = dt.datetime(2026, 11, 1, tzinfo=cfg.MSK)
+    found = [e for e in planets.solar_configurations(start, end)
+             if "нижнем соединении" in e.text]
+    assert len(found) == 1
+    text = found[0].text
+    assert "Венера (V=" in text and "D=" in text and "Ф=" in text
+    assert "южнее Солнца" in text or "севернее Солнца" in text
+
+
+def test_venus_phase_keeps_three_digits_when_tiny():
+    """Ф=0,01 и Ф=0,006 отличаются вдвое, а выглядели бы одинаково."""
+    from astrocal.apparent import planet_label
+    from astrocal.core import timescale
+
+    t = timescale().utc(2026, 10, 24, 3, 44)
+    assert "Ф=0,006" in planet_label("venus", t)
+
+
+def test_planet_diameter_stays_in_arcseconds():
+    """У планет диаметр в секундах даже за минутой: 61″, а не 1′1″."""
+    from astrocal.apparent import format_diameter
+
+    assert format_diameter(61.1, minutes_allowed=False) == "61,1″"
+    assert format_diameter(1941.0) == "32′21″"
+
+
+def test_station_says_what_the_planet_looks_like():
+    from astrocal.events import planets
+
+    start = dt.datetime(2026, 10, 1, tzinfo=cfg.MSK)
+    end = dt.datetime(2026, 11, 1, tzinfo=cfg.MSK)
+    found = planets.stations(start, end)
+    assert found
+    for event in found:
+        assert "V=" in event.text and "D=" in event.text
+        assert "в созвездии" in event.text
+
+
+def test_planet_pairs_are_looked_for_up_to_five_degrees():
+    import inspect
+
+    from astrocal.events import planets
+
+    default = inspect.signature(planets.mutual_approaches) \
+        .parameters["limit_deg"].default
+    assert default == 5.0
+
+
+def test_star_conjunction_thresholds_depend_on_the_star():
+    from astrocal.events.planets import star_conjunction_limit
+
+    assert star_conjunction_limit(2.0) == 2.0
+    assert star_conjunction_limit(3.0) == 2.0
+    assert star_conjunction_limit(5.0) == 1.0
+    assert star_conjunction_limit(7.0) == 1.0
+    assert star_conjunction_limit(7.5) == 0.0
+
+
+def test_planet_star_conjunctions_are_found_and_capped():
+    """Марс идёт через Рак и за месяц минует два десятка слабых звёзд."""
+    from astrocal.events import planets
+
+    start = dt.datetime(2026, 10, 1, tzinfo=cfg.MSK)
+    end = dt.datetime(2026, 11, 1, tzinfo=cfg.MSK)
+    found = planets.star_approaches(start, end)
+    assert found
+    for event in found:
+        assert event.meta["sep_deg"] <= \
+            planets.star_conjunction_limit(event.meta["star_mag"])
+    # не больше одной слабой звезды на планету за ночь
+    faint = [e for e in found if e.meta["star_mag"] > 3.0]
+    keys = [(e.meta["planet"], e.when.date()) for e in faint]
+    assert len(keys) == len(set(keys))
+
+
+# ---------------------------------------------------- покрытия Луной звёзд
+
+
+def test_lunar_occultation_reports_first_contact():
+    """В календаре нужен момент начала, а не середина явления."""
+    from astrocal.events import occultations
+
+    start = dt.datetime(2026, 10, 1, tzinfo=cfg.MSK)
+    end = dt.datetime(2026, 11, 1, tzinfo=cfg.MSK)
+    events, _report = occultations.build_stars(start, end)
+    assert events
+    for event in events:
+        assert "момент первого контакта над Россией" in event.computed
+
+
+def test_pleiades_are_named_instead_of_alcyone():
+    """Про Альциону знают немногие, про Плеяды — все."""
+    from astrocal.events import occultations
+
+    start = dt.datetime(2026, 10, 1, tzinfo=cfg.MSK)
+    end = dt.datetime(2026, 11, 1, tzinfo=cfg.MSK)
+    events, _report = occultations.build_stars(start, end)
+    pleiades = [e for e in events if "Плеяды" in e.text]
+    assert len(pleiades) == 1
+    text = pleiades[0].text
+    assert "Альциона" not in text
+    assert text.startswith("Тесное соединение и покрытие звёздного скопления")
+    assert "видимое почти со всей территории России" in text
+
+
+def test_cluster_band_is_wider_than_one_star():
+    """Полоса по Альционе узкая, по всему скоплению — почти вся страна."""
+    from astrocal.events import occultations
+
+    start = dt.datetime(2026, 10, 1, tzinfo=cfg.MSK)
+    end = dt.datetime(2026, 11, 1, tzinfo=cfg.MSK)
+    cand = [c for c in occultations.star_candidates(start, end)
+            if c["hip"] == 17702]
+    assert cand, "28 октября Луна закрывает Альциону"
+    one = occultations.visibility_band(cand[0]["t"], star=cand[0]["star"])
+    many = occultations.cluster_band("Плеяды", cand[0]["t"])
+    assert many["mask"].sum() > one["mask"].sum()

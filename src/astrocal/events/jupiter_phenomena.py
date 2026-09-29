@@ -142,22 +142,28 @@ def combinations(items: list[Phenomenon]) -> list[dict]:
     return result
 
 
-def describe_combination(pair: dict) -> str | None:
+def describe_combination(pair: dict, jupiter: str = "Юпитера") -> str | None:
+    """Фраза о совпавших явлениях.
+
+    Блеск стоит сразу за словом «Юпитера», к которому относится: раньше он
+    уезжал в конец фразы, и выходило «проходит вместе со своей тенью
+    (V=-1,9m)», будто это блеск тени.
+    """
     a, b = pair["a"], pair["b"]
     kinds = {a.kind, b.kind}
     moons = f"{MOON_RU[a.moon]} и {MOON_RU[b.moon]}"
 
     if kinds == {"transit"}:
-        return f"Два спутника ({moons}) одновременно проходят по диску Юпитера"
+        return f"Два спутника ({moons}) одновременно проходят по диску {jupiter}"
     if kinds == {"shadow"}:
-        return f"Две тени ({moons}) одновременно на диске Юпитера"
+        return f"Две тени ({moons}) одновременно на диске {jupiter}"
     if kinds == {"transit", "shadow"}:
         transit = a if a.kind == "transit" else b
         shadow = a if a.kind == "shadow" else b
         if transit.moon == shadow.moon:
-            return (f"Спутник {MOON_RU[transit.moon]} проходит по диску Юпитера "
-                    f"вместе со своей тенью")
-        return (f"Спутник {MOON_RU[transit.moon]} на диске Юпитера, "
+            return (f"Спутник {MOON_RU[transit.moon]} проходит по диску "
+                    f"{jupiter} вместе со своей тенью")
+        return (f"Спутник {MOON_RU[transit.moon]} на диске {jupiter}, "
                 f"одновременно тень {MOON_RU[shadow.moon]}")
     return None
 
@@ -173,8 +179,7 @@ def all_events(start: dt.datetime, end: dt.datetime,
     used: set[int] = set()
 
     for pair in combinations(items):
-        text = describe_combination(pair)
-        if text is None:
+        if describe_combination(pair) is None:
             continue
         # Публикуем начало совпадения, а не его середину. Середина,
         # округлённая до часа, однажды указала на конец явления: в календаре
@@ -186,10 +191,11 @@ def all_events(start: dt.datetime, end: dt.datetime,
         t = ts.from_datetime(moment)
         const = ru_constellation(constellation_at()(
             earth().at(t).observe(body("jupiter")).apparent()))
+        text = describe_combination(
+            pair, f"Юпитера ({magnitude(planet_magnitude('jupiter', t))})")
         out.append(Event(
             when=moment,
-            text=(f"{text} ({magnitude(planet_magnitude('jupiter', t))}) "
-                  f"в созвездии {const}, "
+            text=(f"{text} в созвездии {const}, "
                   f"с {round_to_minute(pair['start']):%H:%M} "
                   f"до {round_to_minute(pair['end']):%H:%M}"),
             category="jupiter_phenomena",
@@ -218,12 +224,12 @@ def all_events(start: dt.datetime, end: dt.datetime,
             earth().at(t).observe(body("jupiter")).apparent()))
         subject = ("Спутник " + MOON_RU[item.moon] if item.kind == "transit"
                    else "Тень спутника " + MOON_RU[item.moon])
-        action = ("проходит по диску Юпитера" if item.kind == "transit"
-                  else "на диске Юпитера")
+        jupiter = f"Юпитера ({magnitude(planet_magnitude('jupiter', t))})"
+        action = (f"проходит по диску {jupiter}" if item.kind == "transit"
+                  else f"на диске {jupiter}")
         out.append(Event(
             when=moment,
-            text=(f"{subject} {action} ({magnitude(planet_magnitude('jupiter', t))}) "
-                  f"в созвездии {const}"),
+            text=f"{subject} {action} в созвездии {const}",
             category="jupiter_phenomena",
             rank="optional",
             computed=(f"{PHENOMENON_RU[item.kind]}, {item.start:%d.%m %H:%M}–"

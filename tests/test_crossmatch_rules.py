@@ -53,8 +53,10 @@ def test_faint_star_does_not_trigger_the_rule():
     assert not crossmatch.by_new_rules(12.5, "star", 7.5, False, 0.4)
 
 
-def test_star_rule_radius_is_half_a_degree():
-    assert not crossmatch.by_new_rules(12.5, "star", 6.5, False, 0.7)
+def test_star_rule_radius_is_one_degree():
+    """Сначала порог был 0,5°, Станислав расширил его до градуса."""
+    assert crossmatch.by_new_rules(12.5, "star", 6.5, False, 0.9)
+    assert not crossmatch.by_new_rules(12.5, "star", 6.5, False, 1.2)
 
 
 # ------------------------------------------------------------------ пределы

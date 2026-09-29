@@ -55,11 +55,14 @@ def stations(start: dt.datetime, end: dt.datetime) -> list[Event]:
             if not (start <= when < end):
                 continue
             to_retro = rates[i] > 0
+            const = ru_constellation(constellation_at()(
+                earth().at(t).observe(target).apparent()))
             out.append(Event(
                 when=when,
-                text=(f"{RU_NOM[name]} переходит от "
+                text=(f"{RU_NOM[name]} ({planet_label(name, t)}) переходит от "
                       + ("прямого движения к попятному" if to_retro
-                         else "попятного движения к прямому")),
+                         else "попятного движения к прямому")
+                      + f" в созвездии {const}"),
                 category="planet",
                 computed=("смена знака видимой геоцентрической эклиптической долготы, "
                           f"нуль скорости в {t.utc_strftime('%Y-%m-%d %H:%M UTC')}"),
@@ -71,6 +74,7 @@ def stations(start: dt.datetime, end: dt.datetime) -> list[Event]:
 
 def solar_configurations(start: dt.datetime, end: dt.datetime) -> list[Event]:
     """Противостояния и соединения внешних планет, элонгации внутренних."""
+    from .moon import direction
 
     ts = timescale()
     sun = body("sun")
@@ -128,13 +132,19 @@ def solar_configurations(start: dt.datetime, end: dt.datetime) -> list[Event]:
             planet_range = earth().at(t).observe(target).distance().au
             sun_range = earth().at(t).observe(sun).distance().au
             inferior = planet_range < sun_range
+            # Долготы совпали, но планета не садится на Солнце: по широте
+            # остаётся заметный просвет, и наблюдателю важно знать какой.
+            gap = float(separation_deg(t, target, sun))
+            side = direction(t, target, sun)
             out.append(Event(
                 when=when,
-                text=(f"{RU_NOM[name]} в "
-                      f"{'нижнем' if inferior else 'верхнем'} соединении с Солнцем"),
+                text=(f"{RU_NOM[name]} ({planet_label(name, t)}) в "
+                      f"{'нижнем' if inferior else 'верхнем'} соединении "
+                      f"в {angle_deg(gap)} {side} Солнца"),
                 category="planet",
                 computed=("разность видимых геоцентрических эклиптических долгот "
-                          f"проходит через 0°; расстояние до планеты "
+                          f"проходит через 0°; угловое расстояние до Солнца "
+                          f"{gap:.2f}°; расстояние до планеты "
                           f"{planet_range:.3f} а.е. против {sun_range:.3f} а.е. до Солнца"),
                 sources=["Skyfield/DE440s"],
                 precision="hour",
@@ -174,7 +184,7 @@ def solar_configurations(start: dt.datetime, end: dt.datetime) -> list[Event]:
 
 
 def mutual_approaches(start: dt.datetime, end: dt.datetime,
-                      limit_deg: float = 3.0,
+                      limit_deg: float = 5.0,
                       min_elongation_deg: float = 10.0) -> list[Event]:
     """Тесные сближения планета–планета.
 
@@ -246,6 +256,139 @@ def mutual_approaches(start: dt.datetime, end: dt.datetime,
     return out
 
 
+# Соединения планет со звёздами. Порог зависит от звезды: яркую видно рядом
+# с планетой и на двух градусах, слабую имеет смысл упоминать только при
+# тесном сближении, иначе календарь заполнят проходы мимо безымянных звёзд.
+STAR_CONJ_BRIGHT = (3.0, 2.0)     # звезда ярче +3,0ᵐ — расстояние до 2°
+STAR_CONJ_FAINT = (7.0, 1.0)      # от +3,0ᵐ до +7,0ᵐ — до 1°
+
+
+def star_conjunction_limit(star_mag: float) -> float:
+    """Максимальное расстояние, при котором сближение идёт в календарь."""
+    if star_mag <= STAR_CONJ_BRIGHT[0]:
+        return STAR_CONJ_BRIGHT[1]
+    if star_mag <= STAR_CONJ_FAINT[0]:
+        return STAR_CONJ_FAINT[1]
+    return 0.0
+
+
+def star_approaches(start: dt.datetime, end: dt.datetime) -> list[Event]:
+    """Соединения планет со звёздами.
+
+    Планета за месяц проходит по небу считанные градусы, поэтому звёзды
+    отбираются не по всему каталогу, а по коридору вокруг её трассы: иначе
+    пришлось бы считать расстояние до пятнадцати тысяч звёзд на каждом узле
+    сетки.
+    """
+    from skyfield.api import Star
+
+    from ..catalogs import STAR_NAMES_RU, angular_distance_deg, bright_stars
+    from ..core import observer
+    from ..fmt import magnitude as fmt_magnitude
+    from .moon import direction
+
+    ts = timescale()
+    site = observer()
+    sun = body("sun")
+    grid = ts_range(start - dt.timedelta(days=1), end + dt.timedelta(days=1), 60)
+    grid_tt = grid.tt
+    sun_alt = site.at(grid).observe(sun).apparent().altaz()[0].degrees
+    stars = bright_stars(mag_limit=STAR_CONJ_FAINT[0])
+    margin = STAR_CONJ_BRIGHT[1] + 0.5
+
+    out: list[Event] = []
+    for name in ALL:
+        target = body(name)
+        track = earth().at(grid).observe(target).apparent()
+        ra, dec, _distance = track.radec()
+        ra_deg, dec_deg = ra.degrees, dec.degrees
+        alt = site.at(grid).observe(target).apparent().altaz()[0].degrees
+        observable = (alt > 5.0) & (sun_alt < -6.0)
+
+        near = stars[(stars.dec_degrees > dec_deg.min() - margin)
+                     & (stars.dec_degrees < dec_deg.max() + margin)]
+        for _index, row in near.iterrows():
+            limit = star_conjunction_limit(float(row.magnitude))
+            if limit <= 0.0:
+                continue
+            separation = angular_distance_deg(ra_deg, dec_deg,
+                                              row.ra_degrees, row.dec_degrees)
+            if separation.min() > limit:
+                continue
+            star = Star(ra_hours=float(row.ra_degrees) / 15.0,
+                        dec_degrees=float(row.dec_degrees))
+
+            def closest(tt, star=star, target=target):
+                return float(separation_deg(ts.tt_jd(tt), target, star))
+
+            for i in local_minima(grid, separation):
+                tt_min = refine_minimum(closest, grid[i - 1].tt, grid[i + 1].tt)
+                sep_min = closest(tt_min)
+                if sep_min > limit:
+                    continue
+
+                # как и у пар планет: в календаре стоит ближайший момент,
+                # когда сближение реально видно, а не математический минимум
+                candidates = np.where(observable & (separation <= limit))[0]
+                if not len(candidates):
+                    continue
+                j = int(candidates[np.argmin(np.abs(candidates - i))])
+                if abs(grid_tt[j] - tt_min) * 24 > 18:
+                    continue
+                t, gap = grid[j], float(separation[j])
+                when = to_msk(t)
+                if not (start <= when < end):
+                    continue
+
+                hip = int(row.hip)
+                named = STAR_NAMES_RU.get(hip)
+                label = (f"звезды {named} (HIP {hip}, "
+                         f"{fmt_magnitude(float(row.magnitude))})" if named
+                         else f"звезды HIP {hip} "
+                              f"({fmt_magnitude(float(row.magnitude))})")
+                const = ru_constellation(constellation_at()(
+                    earth().at(t).observe(target).apparent()))
+                out.append(Event(
+                    when=when,
+                    text=(f"{RU_NOM[name]} ({planet_label(name, t)}) проходит "
+                          f"в {angle_deg(gap)} {direction(t, target, star)} "
+                          f"{label} в созвездии {const}"),
+                    category="planet",
+                    computed=(f"минимум расстояния {name}–HIP {hip}: "
+                              f"{sep_min:.3f}° в "
+                              f"{to_msk(ts.tt_jd(tt_min)):%d.%m %H:%M} МСК; "
+                              f"в календаре момент наблюдаемости, разделение "
+                              f"{gap:.3f}°; порог для звезды "
+                              f"{row.magnitude:+.1f}ᵐ — {limit:.1f}°"),
+                    sources=["Skyfield/DE440s", "Hipparcos"],
+                    precision="hour",
+                    meta={"planet": name, "hip": hip,
+                          "star_mag": float(row.magnitude),
+                          "sep_deg": gap},
+                ))
+    return _deduplicate_stars(out)
+
+
+def _deduplicate_stars(events: list[Event]) -> list[Event]:
+    """Не больше одного сближения на планету за ночь — самое тесное.
+
+    Без этого октябрь превращается в двадцать строк подряд: Марс идёт через
+    Рак и всю дорогу проходит мимо безымянных звёзд шестой величины. Каждая
+    такая строка по правилу законна, но вместе они вытесняют из выпуска всё
+    остальное.
+
+    Сближения с яркими звёздами из ограничения выведены: их мало, у них есть
+    имена, и именно ради них правило и задумано.
+    """
+    kept, best = [], {}
+    for event in sorted(events, key=lambda e: e.meta["sep_deg"]):
+        if event.meta["star_mag"] <= STAR_CONJ_BRIGHT[0]:
+            kept.append(event)
+            continue
+        best.setdefault((event.meta["planet"], event.when.date()), event)
+    return sorted(kept + list(best.values()), key=lambda e: e.when)
+
+
 def greatest_brilliancy(start: dt.datetime, end: dt.datetime) -> list[Event]:
     """Наибольший блеск Венеры и Меркурия.
 
@@ -292,4 +435,5 @@ def greatest_brilliancy(start: dt.datetime, end: dt.datetime) -> list[Event]:
 
 def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
     return (stations(start, end) + solar_configurations(start, end)
-            + mutual_approaches(start, end) + greatest_brilliancy(start, end))
+            + mutual_approaches(start, end) + star_approaches(start, end)
+            + greatest_brilliancy(start, end))
