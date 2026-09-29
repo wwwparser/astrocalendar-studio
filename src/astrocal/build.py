@@ -13,7 +13,8 @@ from .events import (asteroid_occultations, asteroids, close_approaches,
                      lunar_features, meteors,
                      moon, occultations, planets, seasons, spaceflight, titan,
                      visibility)
-from .fmt import MONTHS_NOM_CAP, date_time_msk
+from .fmt import (MONTHS_GEN, MONTHS_NOM_CAP, MONTHS_NOMINATIVE,
+                  date_time_msk)
 
 HEADER = "АСТРОНОМИЧЕСКИЕ СОБЫТИЯ {month} {year} года (время московское)✨"
 
@@ -218,6 +219,49 @@ def render_post(events: list[Event], year: int, month: int,
     head = HEADER.format(month=MONTHS_NOM_CAP[month], year=year)
     lines = [decorate(e.line(), e) if icons else e.line() for e in events]
     return head + "\n\n" + "\n".join(lines) + "\n"
+
+
+WEEKDAYS_RU = {0: "понедельник", 1: "вторник", 2: "среда", 3: "четверг",
+               4: "пятница", 5: "суббота", 6: "воскресенье"}
+
+
+def render_markdown(events: list[Event], year: int, month: int) -> str:
+    """Выпуск, сгруппированный по дням, — для чтения, а не для ленты.
+
+    Сплошной список из девяноста строк читается плохо: глаз не находит, где
+    кончается одно число и начинается другое. Здесь каждый день — свой
+    заголовок с днём недели, а под ним события с отступом, время вынесено
+    вперёд и выделено.
+
+    Разметка намеренно скупая: жирный шрифт и списки. Заголовки уровня `#`,
+    таблицы и цитаты Telegram при вставке не понимает, и в канале они
+    превращаются в решётки и палки посреди текста.
+    """
+    from .icons import icon_for
+
+    head = [f"**{MONTHS_NOMINATIVE[month].upper()} {year}**",
+            "",
+            "_Астрономические события. Время московское._",
+            ""]
+
+    by_day: dict[int, list[Event]] = {}
+    for event in sorted(events, key=lambda e: e.display_time):
+        by_day.setdefault(event.display_time.day, []).append(event)
+
+    body: list[str] = []
+    for day, items in sorted(by_day.items()):
+        weekday = WEEKDAYS_RU[dt.date(year, month, day).weekday()]
+        body.append(f"**{day} {MONTHS_GEN[month]}**, {weekday}")
+        body.append("")
+        for event in items:
+            body.append(f"{icon_for(event)} **{event.display_time:%H:%M}** — "
+                        f"{event.text}")
+        body.append("")
+
+    tail = ["---", "",
+            f"_Событий в выпуске: {len(events)}. Расчёт: AstroCalendar "
+            f"Studio, эфемериды JPL DE440s._"]
+    return "\n".join(head + body + tail) + "\n"
 
 
 def load_source_list(year: int, month: int) -> list[dict]:

@@ -6,9 +6,10 @@
     python scripts/build_calendar.py 2026 9 --all-ranks     # публиковать всё
     python scripts/build_calendar.py 2026 9 --icons         # значки вместо ▪️
 
-На выходе три файла:
+На выходе четыре файла:
 
 * `out/calendar_YYYY-MM.txt` — пост для Телеграма (только ранги must и interesting);
+* `out/calendar_YYYY-MM.md` — тот же выпуск, разбитый по дням, с разметкой;
 * `out/protocol_YYYY-MM.md` — построчный разбор расчётов и источников;
 * `out/QA_REPORT_YYYY-MM.md` — можно ли доверять этому календарю: проверки,
   флаги REVIEW, сверка с Horizons, provenance, сроки годности данных.
@@ -21,8 +22,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from astrocal import config as cfg, qa, rating              # noqa: E402
-from astrocal.build import (collect, render_post, render_protocol,   # noqa: E402
-                            render_qa_report)
+from astrocal.build import (collect, render_markdown, render_post,  # noqa: E402
+                            render_protocol, render_qa_report)
 
 SOURCES = {
     "ephemeris": "JPL DE440s (планеты и Луна), jup380s (галилеевы спутники), "
@@ -63,16 +64,18 @@ def main(argv: list[str]) -> int:
               for name, delta in (e.provenance.get("horizons") or {}).items()]
 
     out_post = cfg.OUT / f"calendar_{year:04d}-{month:02d}.txt"
+    out_md = cfg.OUT / f"calendar_{year:04d}-{month:02d}.md"
     out_protocol = cfg.OUT / f"protocol_{year:04d}-{month:02d}.md"
     out_qa = cfg.OUT / f"QA_REPORT_{year:04d}-{month:02d}.md"
 
     out_post.write_text(render_post(published, year, month, icons=icons), encoding="utf-8")
+    out_md.write_text(render_markdown(published, year, month), encoding="utf-8")
     out_protocol.write_text(render_protocol(events, extra, year, month, checks),
                             encoding="utf-8")
     out_qa.write_text(render_qa_report(events, published, extra, result, year, month),
                       encoding="utf-8")
 
-    print(f"\n{out_post}\n{out_protocol}\n{out_qa}")
+    print(f"\n{out_post}\n{out_md}\n{out_protocol}\n{out_qa}")
     if result["review"]:
         print("\nВНИМАНИЕ: есть события с флагом REVIEW — смотрите QA-отчёт "
               "перед публикацией.")

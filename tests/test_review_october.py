@@ -404,3 +404,63 @@ def test_october_issue_fits_telegram_messages():
         pytest.skip("выпуск ещё не собран")
     for part in split_message(source.read_text(encoding="utf-8")):
         assert telegram_length(part) <= TELEGRAM_LIMIT
+
+
+# ---------------------------------------------------- выпуск в Markdown
+
+
+def _sample_events():
+    from astrocal.core import Event
+
+    return [
+        Event(when=dt.datetime(2026, 10, 1, 6, 0, tzinfo=cfg.MSK),
+              text="Луна в 5,3° севернее Урана", category="moon",
+              precision="hour"),
+        Event(when=dt.datetime(2026, 10, 1, 23, 30, tzinfo=cfg.MSK),
+              text="Комета ближе всего к Земле", category="comet",
+              precision="minute"),
+        Event(when=dt.datetime(2026, 10, 3, 16, 0, tzinfo=cfg.MSK),
+              text="Луна в фазе последней четверти", category="moon_phase",
+              precision="hour"),
+    ]
+
+
+def test_markdown_groups_events_by_day():
+    from astrocal.build import render_markdown
+
+    text = render_markdown(_sample_events(), 2026, 10)
+    assert "**1 октября**, четверг" in text
+    assert "**3 октября**, суббота" in text
+    assert "**2 октября**" not in text, "пустой день не печатается"
+
+
+def test_markdown_puts_time_in_bold_before_the_text():
+    from astrocal.build import render_markdown
+
+    text = render_markdown(_sample_events(), 2026, 10)
+    assert "**06:00** — Луна в 5,3° севернее Урана" in text
+
+
+def test_markdown_avoids_syntax_telegram_cannot_render():
+    """Заголовки, таблицы и цитаты в канале превращаются в мусор."""
+    from astrocal.build import render_markdown
+
+    text = render_markdown(_sample_events(), 2026, 10)
+    for line in text.splitlines():
+        assert not line.startswith("#")
+        assert not line.startswith(">")
+        assert not line.startswith("|")
+
+
+def test_markdown_header_is_nominative():
+    from astrocal.build import render_markdown
+
+    text = render_markdown(_sample_events(), 2026, 10)
+    assert text.startswith("**ОКТЯБРЬ 2026**")
+
+
+def test_markdown_counts_the_events():
+    from astrocal.build import render_markdown
+
+    text = render_markdown(_sample_events(), 2026, 10)
+    assert "Событий в выпуске: 3" in text
