@@ -520,7 +520,7 @@ C/2026 X1 (PANSTARRS)                  ★★★
 CLI никуда не делся и остаётся полноценным интерфейсом к ядру.
 
 ```bash
-python scripts/build_calendar.py 2026 9          # пост, протокол, QA-отчёт
+python scripts/build_calendar.py 2026 9          # пост, выпуск в .md, протокол, QA-отчёт
 python scripts/publish_telegram.py 2026 9        # предпросмотр
 python scripts/publish_telegram.py 2026 9 --send # отправка
 python scripts/collect_launches.py 2026 9        # черновик пусков
