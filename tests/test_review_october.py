@@ -343,3 +343,30 @@ def test_cluster_band_is_wider_than_one_star():
     one = occultations.visibility_band(cand[0]["t"], star=cand[0]["star"])
     many = occultations.cluster_band("Плеяды", cand[0]["t"])
     assert many["mask"].sum() > one["mask"].sum()
+
+
+def test_all_four_librations_are_published():
+    """Максимум в каждую сторону раз в месяц: восток, запад, север, юг."""
+    from astrocal import config as config_module
+    from astrocal.events import lunar_features
+
+    for year, month in ((2026, 10), (2026, 11), (2026, 12)):
+        start, end = config_module.month_bounds(year, month)
+        events = lunar_features.librations(start, end)
+        edges = sorted(event.meta["edge"] for event in events)
+        assert edges == ["восточный", "западный", "северный", "южный"], \
+            f"{year}-{month}: {edges}"
+        for event in events:
+            assert event.rank == "interesting"
+
+
+def test_libration_wording_marks_the_strong_ones():
+    from astrocal import config as config_module
+    from astrocal.events import lunar_features
+
+    start, end = config_module.month_bounds(2026, 10)
+    for event in lunar_features.librations(start, end):
+        if event.meta["strong"]:
+            assert event.text.startswith("Благоприятная либрация")
+        else:
+            assert event.text.startswith("Либрация:")

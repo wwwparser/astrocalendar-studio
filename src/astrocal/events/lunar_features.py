@@ -177,8 +177,29 @@ def clair_obscur(start: dt.datetime, end: dt.datetime) -> list[Event]:
     return out
 
 
+LIBRATION_DIRECTIONS = (
+    (0, +1, "восточный", "Море Краевое и Море Смита"),
+    (0, -1, "западный", "Море Восточное"),
+    (1, +1, "северный", "район кратера Пири"),
+    (1, -1, "южный", "район кратера Шеклтон"),
+)
+
+
 def librations(start: dt.datetime, end: dt.datetime) -> list[Event]:
-    """Максимумы либрации — когда открывается дальний край лунного лимба."""
+    """Максимумы либрации — когда открывается дальний край лунного лимба.
+
+    Либрация и по долготе, и по широте проходит через максимум примерно раз
+    в месяц в каждую сторону, значит событий должно быть четыре: восточное,
+    западное, северное и южное. Раньше публиковались только те, что
+    перевалили за 6,5° и застали Луну над горизонтом, и в выпуск попадало
+    одно из четырёх — остальные месяцы читатель просто не видел, когда
+    открывается дальний край.
+
+    Поэтому порог снят: в календарь идёт наибольший за месяц максимум в
+    каждую сторону. Насколько он велик, сказано в самой строке, а высота
+    Луны — в протоколе расчёта: момент максимума либрации от видимости не
+    зависит, а лимб остаётся открытым не один час.
+    """
     if moon_frame() is None:
         return []
 
@@ -186,45 +207,42 @@ def librations(start: dt.datetime, end: dt.datetime) -> list[Event]:
     values = np.array([libration(t) for t in grid])
 
     out: list[Event] = []
-    directions = (
-        (0, +1, "восточный", "Море Краевое и Море Смита"),
-        (0, -1, "западный", "Море Восточное"),
-        (1, +1, "северный", "район кратера Пири"),
-        (1, -1, "южный", "район кратера Шеклтон"),
-    )
-    for axis, sign, edge, features in directions:
+    for axis, sign, edge, features in LIBRATION_DIRECTIONS:
         series = values[:, axis] * sign
-        for index in range(1, len(series) - 1):
-            if not (series[index] > series[index - 1]
-                    and series[index] >= series[index + 1]):
-                continue
-            if series[index] < STRONG_LIBRATION_DEG:
-                continue
-            when = to_msk(grid[index])
-            if not (start <= when < end):
-                continue
-            visible, altitude = _observable(when)
-            if not visible:
-                continue
-            longitude_libration, latitude_libration = values[index]
-            out.append(Event(
-                when=when,
-                text=(f"Благоприятная либрация: открыт {edge} край лунного "
-                      f"диска, либрация по "
-                      f"{'долготе' if axis == 0 else 'широте'} "
-                      f"{number(values[index][axis], 1, sign=True)}°, "
-                      f"видны {features}"),
-                category="lunar_feature",
-                confidence="высокая",
-                rank="interesting",
-                computed=(f"максимум либрации по "
-                          f"{'долготе' if axis == 0 else 'широте'}: "
-                          f"{longitude_libration:+.2f}° / {latitude_libration:+.2f}°; "
-                          f"высота Луны над Россией {altitude:.0f}°"),
-                sources=["Skyfield/DE440s", "ядро ориентации Луны DE421"],
-                precision="hour",
-                meta={"feature": "libration", "axis": axis},
-            ))
+        peaks = [index for index in range(1, len(series) - 1)
+                 if series[index] > series[index - 1]
+                 and series[index] >= series[index + 1]]
+        if not peaks:
+            continue
+        index = max(peaks, key=lambda position: series[position])
+        when = to_msk(grid[index])
+        if not (start <= when < end):
+            continue
+        visible, altitude = _observable(when)
+        longitude_libration, latitude_libration = values[index]
+        axis_ru = "долготе" if axis == 0 else "широте"
+        strong = series[index] >= STRONG_LIBRATION_DEG
+        out.append(Event(
+            when=when,
+            text=(f"{'Благоприятная либрация' if strong else 'Либрация'}: "
+                  f"открыт {edge} край лунного диска, либрация по {axis_ru} "
+                  f"{number(values[index][axis], 1, sign=True)}°, "
+                  f"видны {features}"),
+            category="lunar_feature",
+            confidence="высокая",
+            # все четыре максимума идут в выпуск: читателю нужна полная
+            # картина месяца, а не только рекордные наклоны
+            rank="interesting",
+            computed=(f"наибольший за месяц максимум либрации по {axis_ru}: "
+                      f"{longitude_libration:+.2f}° / {latitude_libration:+.2f}°; "
+                      f"высота Луны над Россией в этот момент {altitude:.0f}°"
+                      + ("" if visible else ", Луна под горизонтом — лимб "
+                         "остаётся открытым и в ближайшие ночи")),
+            sources=["Skyfield/DE440s", "ядро ориентации Луны DE421"],
+            precision="hour",
+            meta={"feature": "libration", "axis": axis, "edge": edge,
+                  "strong": strong},
+        ))
     return out
 
 
