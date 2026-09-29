@@ -45,7 +45,8 @@ from itertools import permutations
 
 import numpy as np
 
-from ..core import Event, earth, timescale, to_msk, ts_range
+from ..core import (Event, earth, find_zero, refine_minimum, round_to_minute,
+                    timescale, to_msk, ts_range)
 from .jupiter_moons import MOON_RU, MOONS, satellite
 
 # Средние радиусы, км (IAU)
@@ -53,6 +54,12 @@ MOON_RADIUS_KM = {"io": 1821.6, "europa": 1560.8,
                   "ganymede": 2631.2, "callisto": 2410.3}
 
 KIND_RU = {"occultation": "покрывает", "eclipse": "затмевает"}
+
+# Кто кого — винительный падеж: «Европа затмевает Ио», но «Ио затмевает
+# Европу» и «Европа покрывает Ганимеда». Без этого в календаре встречались
+# фразы, где непонятно, какой спутник закрывает какой.
+MOON_RU_ACC = {"io": "Ио", "europa": "Европу",
+               "ganymede": "Ганимеда", "callisto": "Каллисто"}
 
 
 @dataclass
@@ -76,7 +83,7 @@ class MutualEvent:
     @property
     def title(self) -> str:
         return (f"{MOON_RU[self.front]} {KIND_RU[self.kind]} "
-                f"{MOON_RU[self.back]}")
+                f"{MOON_RU_ACC[self.back]}")
 
 
 def overlap_fraction(separation: float, radius_front: float,
@@ -136,6 +143,30 @@ def light_time_to_earth(grid, moon: str):
     distance = np.linalg.norm(
         earth().at(grid).observe(satellite(MOONS[moon])).position.km, axis=0)
     return distance / LIGHT_KM_S / 86400.0
+
+
+def _gap_at(tt: float, kind: str, front: str, back: str) -> float:
+    """Зазор между дисками в один момент: отрицательный — диски перекрыты.
+
+    Нужен для уточнения контактов. Сетка в две минуты находит явление, но
+    начало и конец на ней округлены до узла, а в календаре теперь стоит
+    интервал с точностью до минуты — значит, контакты надо доводить.
+    """
+    t = timescale().tt_jd([tt])
+    vectors, distances = (_positions_from_earth(t) if kind == "occultation"
+                          else _positions_from_sun(t))
+    separation, radius_front, radius_back = _separations(
+        vectors, distances, front, back)
+    return float(separation[0] - (radius_front[0] + radius_back[0]))
+
+
+def _separation_at(tt: float, kind: str, front: str, back: str) -> float:
+    """Угловое расстояние между спутниками в один момент, радианы."""
+    t = timescale().tt_jd([tt])
+    vectors, distances = (_positions_from_earth(t) if kind == "occultation"
+                          else _positions_from_sun(t))
+    separation, _front, _back = _separations(vectors, distances, front, back)
+    return float(separation[0])
 
 
 def _separations(vectors, distances, front: str, back: str):
@@ -205,14 +236,43 @@ def find(start: dt.datetime, end: dt.datetime,
                 if fraction <= 0.01:
                     continue
 
-                def seen(position: int) -> dt.datetime:
-                    return to_msk(ts.tt_jd(grid[position].tt + delay[position]))
+                # Контакты доводим бисекцией между соседними узлами сетки,
+                # максимум — золотым сечением. Без этого начало и конец
+                # округлены до двух минут, а в строке стоит точная минута.
+                gap = (lambda tt, k=kind, f=first, s=second:
+                       _gap_at(tt, k, f, s))
+                begin_tt = float(grid[begin].tt)
+                if begin > 0:
+                    begin_tt = find_zero(gap, float(grid[begin - 1].tt),
+                                         begin_tt)
+                finish_tt = float(grid[finish].tt)
+                if finish + 1 < len(grid):
+                    finish_tt = find_zero(gap, float(grid[finish + 1].tt),
+                                          finish_tt)
+                middle_tt = refine_minimum(
+                    lambda tt, k=kind, f=first, s=second:
+                    _separation_at(tt, k, f, s),
+                    float(grid[max(index - 1, 0)].tt),
+                    float(grid[min(index + 1, len(grid) - 1)].tt))
+
+                # время хода света берём на сам момент, а не на узел сетки
+                def seen(tt: float, k=kind, s=second) -> dt.datetime:
+                    shift = (float(light_time_to_earth(ts.tt_jd([tt]), s)[0])
+                             if k == "eclipse" else 0.0)
+                    return to_msk(ts.tt_jd(tt + shift))
+
+                # глубину и разделение берём в уточнённом максимуме
+                closest = _separation_at(middle_tt, kind, first, second)
+                fraction = overlap_fraction(
+                    closest, float(radius_front[index]),
+                    float(radius_back[index]))
 
                 found.append(MutualEvent(
                     kind=kind, front=first, back=second,
-                    start=seen(begin), middle=seen(index), end=seen(finish),
+                    start=seen(begin_tt), middle=seen(middle_tt),
+                    end=seen(finish_tt),
                     min_separation_arcsec=float(
-                        np.degrees(separation[index]) * 3600.0),
+                        np.degrees(closest) * 3600.0),
                     obscuration=fraction,
                     observable=bool(observable[index]),
                     light_minutes=float(delay[index] * 1440.0)))
@@ -229,8 +289,11 @@ def to_event(item: MutualEvent) -> Event:
         when=item.start,
         text=(f"Спутники Юпитера: {item.title} "
               f"({kind_ru}), закрыто {percent} диска, "
-              f"с {item.start:%H:%M} до {item.end:%H:%M}, "
-              f"максимум в {item.middle:%H:%M}"),
+              # округляем так же, как заголовок строки, иначе в одной
+              # фразе стоят «04:21» и «с 04:20»
+              f"с {round_to_minute(item.start):%H:%M} "
+              f"до {round_to_minute(item.end):%H:%M}, "
+              f"максимум в {round_to_minute(item.middle):%H:%M}"),
         category="jupiter_mutual",
         confidence="средняя",
         rank="interesting" if item.observable else "optional",

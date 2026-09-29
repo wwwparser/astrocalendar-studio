@@ -108,7 +108,8 @@ def test_combined_transit_reports_its_start_and_interval():
     assert events, "в октябре есть совпадения прохождения и тени"
     for event in events:
         assert event.precision == "minute"
-        assert f", с {event.when:%H:%M} до " in event.text
+        # время в тексте округляется так же, как в заголовке строки
+        assert f", с {event.display_time:%H:%M} до " in event.text
 
 
 def test_io_shadow_pair_matches_stellarium():
@@ -146,6 +147,33 @@ def test_libration_stays_within_physical_limits():
 # ---------------------------------------------------- взаимные явления
 
 
+def test_mutual_event_line_agrees_with_its_own_headline():
+    """В строке стояло «04:21 … с 04:20»: заголовок округлял, текст обрезал."""
+    from astrocal.events import jupiter_mutual
+
+    start = dt.datetime(2026, 10, 1, tzinfo=cfg.MSK)
+    end = dt.datetime(2026, 11, 1, tzinfo=cfg.MSK)
+    events, _items = jupiter_mutual.all_events(start, end)
+    assert events
+    for event in events:
+        assert f"с {event.display_time:%H:%M} до " in event.text
+
+
+def test_mutual_contacts_are_refined_below_the_grid_step():
+    """5 октября по Stellarium: начало 04:20, максимум 04:22."""
+    from astrocal.events import jupiter_mutual
+
+    found = jupiter_mutual.find(dt.datetime(2026, 10, 5, tzinfo=cfg.MSK),
+                                dt.datetime(2026, 10, 6, tzinfo=cfg.MSK))
+    eclipse = [item for item in found if item.kind == "eclipse"]
+    assert len(eclipse) == 1
+    item = eclipse[0]
+    assert item.start.strftime("%H:%M") == "04:19"
+    assert item.middle.strftime("%H:%M") == "04:22"
+    # контакты не лежат на узлах двухминутной сетки
+    assert item.start.second not in (0,) or item.end.second not in (0,)
+
+
 def test_mutual_eclipse_carries_light_time_correction():
     """Затмение происходит у Юпитера, а видим мы его почти на час позже."""
     from astrocal.events import jupiter_mutual
@@ -160,3 +188,18 @@ def test_mutual_eclipse_carries_light_time_correction():
     for item in found:
         if item.kind == "occultation":
             assert item.light_minutes == 0.0
+
+
+def test_mutual_titles_use_the_accusative():
+    """«Ио затмевает Европа» не даёт понять, кто кого закрывает."""
+    from astrocal.events.jupiter_mutual import MOON_RU_ACC, MutualEvent
+
+    from astrocal.events.jupiter_moons import MOON_RU
+
+    assert set(MOON_RU_ACC) == set(MOON_RU)
+    moment = dt.datetime(2026, 10, 5, 4, 20, tzinfo=cfg.MSK)
+    item = MutualEvent(kind="eclipse", front="io", back="europa",
+                       start=moment, middle=moment, end=moment,
+                       min_separation_arcsec=0.5, obscuration=0.8,
+                       observable=True)
+    assert item.title == "Ио затмевает Европу"

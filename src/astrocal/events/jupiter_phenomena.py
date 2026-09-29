@@ -20,7 +20,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..core import (Event, body, constellation_at, earth, observer, southern_observer,
-                    timescale, to_msk, ts_range)
+                    round_to_minute, timescale, to_msk, ts_range)
 from ..fmt import magnitude, ru_constellation
 from .jupiter_moons import MOON_RU, MOONS, satellite
 
@@ -189,8 +189,9 @@ def all_events(start: dt.datetime, end: dt.datetime,
         out.append(Event(
             when=moment,
             text=(f"{text} ({magnitude(planet_magnitude('jupiter', t))}) "
-                  f"в созвездии {const}, с {pair['start']:%H:%M} "
-                  f"до {pair['end']:%H:%M}"),
+                  f"в созвездии {const}, "
+                  f"с {round_to_minute(pair['start']):%H:%M} "
+                  f"до {round_to_minute(pair['end']):%H:%M}"),
             category="jupiter_phenomena",
             rank="interesting",
             computed=(f"совпадение по времени {pair['start']:%d.%m %H:%M}–"
