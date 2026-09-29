@@ -37,11 +37,23 @@ def load_env(path: Path = None) -> None:
         os.environ.setdefault(key.strip(), value.strip())
 
 
+def telegram_length(text: str) -> int:
+    """Длина так, как её считает Telegram: в единицах UTF-16.
+
+    Питон меряет длину в символах, а Telegram — в кодовых единицах UTF-16,
+    и эмодзи вроде 🔭 или 🪐 занимают в ней две единицы вместо одной. В
+    выпуске эмодзи стоит почти в каждой строке, поэтому кусок в 4090
+    «питоновских» символов оказывался длиной 4102 и сообщение не уходило.
+    """
+    return len(text.encode("utf-16-le")) // 2
+
+
 def split_message(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:
     """Режем по строкам: обрывать строку календаря посередине нельзя."""
     chunks, current = [], ""
     for line in text.splitlines(keepends=True):
-        if len(current) + len(line) > limit and current:
+        if (telegram_length(current) + telegram_length(line) > limit
+                and current):
             chunks.append(current.rstrip("\n"))
             current = ""
         current += line

@@ -372,3 +372,35 @@ def test_libration_wording_marks_the_strong_ones():
             assert event.text.startswith("Благоприятная либрация")
         else:
             assert event.text.startswith("Либрация:")
+
+
+def test_telegram_split_counts_utf16_units():
+    """Эмодзи занимает две единицы: кусок в 4090 символов длиннее лимита."""
+    import sys
+    from pathlib import Path as _Path
+
+    sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "scripts"))
+    from publish_telegram import TELEGRAM_LIMIT, split_message, telegram_length
+
+    assert telegram_length("🔭") == 2
+    assert telegram_length("а") == 1
+
+    line = "🔭 " + "событие календаря " * 5 + "\n"
+    for part in split_message(line * 60):
+        assert telegram_length(part) <= TELEGRAM_LIMIT
+
+
+def test_october_issue_fits_telegram_messages():
+    import sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root / "scripts"))
+    from publish_telegram import TELEGRAM_LIMIT, split_message, telegram_length
+
+    source = root / "out" / "calendar_2026-10.txt"
+    if not source.exists():
+        import pytest
+        pytest.skip("выпуск ещё не собран")
+    for part in split_message(source.read_text(encoding="utf-8")):
+        assert telegram_length(part) <= TELEGRAM_LIMIT
