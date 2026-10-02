@@ -879,3 +879,9 @@ Hipparcos, OpenNGC, Stellarium, Celestrak, CNEOS, Launch Library 2)
 Windows: скачайте `AstroCalendarStudio-1.7.0-Windows.zip` из [релиза 1.7.0](https://github.com/wwwparser/astrocalendar-studio/releases/tag/v1.7.0), распакуйте всю папку и запустите `AstroCalendarStudio.exe`. При первом запуске используйте кнопку скачивания данных; дополнительные лунные ядра нужны для рельефа и либраций. При обновлении сохраните `data/` и `workspace/`.
 
 В предпросмотре добавлена кнопка **TG HTML**: экспортирует custom emoji из набора Стаса. В веб-редакторе тот же формат доступен среди загрузок публикации. Это Telegram HTML для API, а не обычный файл для вставки в чат; TXT/Markdown/буфер остаются с Unicode. Отправка с custom emoji опциональна (`TELEGRAM_CUSTOM_EMOJI=1`) и требует разрешений Telegram для Вашего бота.
+
+## Портативный комплект для Стаса
+
+В [релизе 1.7.0](https://github.com/wwwparser/astrocalendar-studio/releases/tag/v1.7.0) доступен `AstroCalendarStudio-1.7.0-Stas-Portable.zip`: готовая Windows-программа, краткая инструкция и октябрьский выпуск с четырьмя частями Telegram. Распакуйте весь архив и запустите exe; Python и установщик не нужны. Эфемериды скачиваются кнопкой «Данные → Скачать недостающее». Для лунного рельефа выберите загрузку с необязательными данными.
+
+[Инструкция по запуску и сохранению выпусков](docs/portable_stas.txt). Данные, результаты и workspace лежат рядом с exe; настройки окна используют QSettings Windows.
