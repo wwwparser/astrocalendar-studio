@@ -35,9 +35,14 @@ DEFAULT_CITIES = [
     City("Санкт-Петербург", 59.9386, 30.3141, "Europe/Moscow", 3),
     City("Калининград", 54.7104, 20.4522, "Europe/Kaliningrad", 20),
     City("Краснодар", 45.0355, 38.9753, "Europe/Moscow", 25),
+    City("Сочи", 43.5855, 39.7231, "Europe/Moscow", 20),
     City("Екатеринбург", 56.8389, 60.6057, "Asia/Yekaterinburg", 255),
     City("Новосибирск", 55.0084, 82.9357, "Asia/Novosibirsk", 150),
     City("Владивосток", 43.1155, 131.8855, "Asia/Vladivostok", 30),
+    City("Иркутск", 52.2864, 104.2807, "Asia/Irkutsk", 440),
+    City("Якутск", 62.0355, 129.6755, "Asia/Yakutsk", 100),
+    City("Магадан", 59.5682, 150.8085, "Asia/Magadan", 50),
+    City("Петропавловск-Камчатский", 53.0370, 158.6559, "Asia/Kamchatka", 100),
 ]
 
 USER_CITIES_FILE = cfg.DATA / "cities.json"

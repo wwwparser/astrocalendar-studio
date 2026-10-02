@@ -116,8 +116,14 @@ class Event:
         return w
 
     def line(self) -> str:
-        from .fmt import date_time_msk
-        return f"▪️{date_time_msk(self.display_time)} — {self.text}"
+        return f"▪️{self.date_label} — {self.text}"
+
+    @property
+    def date_label(self) -> str:
+        from .fmt import date_time_msk, MONTHS_GEN
+        if self.precision == "day":
+            return f"{self.when:%d} {MONTHS_GEN[self.when.month]}"
+        return date_time_msk(self.display_time)
 
     @property
     def event_id(self) -> str:
@@ -131,7 +137,7 @@ class Event:
         import hashlib
         import re
 
-        skeleton = re.sub(r"[-+]?\d+[.,]?\d*", "", self.text)
+        skeleton = re.sub(r"[-+]?\d+[.,]?\d*", "", self.meta.get("identity_text", self.text))
         skeleton = re.sub(r"\s+", " ", skeleton).strip().lower()
         key = f"{self.category}|{self.when:%Y-%m-%d}|{skeleton}"
         return hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]

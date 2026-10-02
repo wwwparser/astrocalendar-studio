@@ -64,7 +64,7 @@ class EditableEvent:
 
     def line(self) -> str:
         from astrocal.fmt import date_time_msk
-        return f"▪️{date_time_msk(self.event.display_time)} — {self.text}"
+        return f"▪️{self.event.date_label} — {self.text}"
 
     def revert(self) -> None:
         self.editor_text = None

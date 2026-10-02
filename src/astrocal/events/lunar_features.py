@@ -22,7 +22,7 @@ import numpy as np
 
 from .. import config as cfg
 from ..fmt import number
-from ..core import (Event, body, find_zero, observer, planets, southern_observer,
+from ..core import (Event, body, find_zero, planets,
                     timescale, to_msk, ts_range, refine_minimum)
 
 MOON_FRAME_FILES = {
@@ -113,7 +113,10 @@ def libration(t) -> tuple[float, float]:
 def _observable(when: dt.datetime, min_altitude: float = 10.0) -> tuple[bool, float]:
     t = timescale().from_datetime(when)
     best = -90.0
-    for site in (observer(), southern_observer()):
+    from ..cities import all_cities
+    from skyfield.api import wgs84
+    for city in all_cities():
+        site = planets()["earth"] + wgs84.latlon(city.lat, city.lon, city.elevation_m)
         altitude = float(site.at(t).observe(body("moon")).apparent()
                          .altaz()[0].degrees)
         sun_altitude = float(site.at(t).observe(body("sun")).apparent()
@@ -121,6 +124,32 @@ def _observable(when: dt.datetime, min_altitude: float = 10.0) -> tuple[bool, fl
         if altitude > best and sun_altitude < 0:
             best = altitude
     return best > min_altitude, best
+
+
+def _moon_parameters(t):
+    from .moon import illum_and_waxing
+    from ..apparent import moon_label
+    fraction, waxing = illum_and_waxing(t)
+    return moon_label(t, fraction, waxing)
+
+
+def feature_sites(when, hours=2.0):
+    """Площадки с Луной ≥10° и Солнцем ≤−6° внутри окна явления."""
+    from ..cities import all_cities
+    from skyfield.api import wgs84
+    grid = ts_range(when - dt.timedelta(hours=hours), when + dt.timedelta(hours=hours), 10)
+    results = []
+    for city in all_cities():
+        site = planets()["earth"] + wgs84.latlon(city.lat, city.lon, city.elevation_m)
+        altitude = site.at(grid).observe(body("moon")).apparent().altaz()[0].degrees
+        sun = site.at(grid).observe(body("sun")).apparent().altaz()[0].degrees
+        indices = np.flatnonzero((altitude >= 10) & (sun <= -6))
+        if len(indices):
+            best = int(indices[np.argmax(altitude[indices])])
+            results.append({"city": city.name, "start": to_msk(grid[indices[0]]).isoformat(),
+                            "end": to_msk(grid[indices[-1]]).isoformat(),
+                            "max_altitude_deg": float(altitude[best])})
+    return results
 
 
 def clair_obscur(start: dt.datetime, end: dt.datetime) -> list[Event]:
@@ -153,12 +182,15 @@ def clair_obscur(start: dt.datetime, end: dt.datetime) -> list[Event]:
             if not (start <= when < end):
                 continue
             visible, altitude = _observable(when)
+            sites = feature_sites(when)
+            visible = bool(sites)
             longitude_libration, latitude_libration = libration(t)
             out.append(Event(
                 when=when,
-                text=(f"{name} — {description}, видна около "
-                      f"{FEATURE_WINDOW_HOURS:.0f} часов"
-                      + ("" if visible else ", из России в этот момент Луна низко")),
+                text=(f"{name} ({_moon_parameters(t)}) — {description}, приближённое окно "
+                      f"±{FEATURE_WINDOW_HOURS:.0f} ч"
+                      + (", наблюдение: " + ", ".join(s["city"] for s in sites)
+                         if sites else ", на опорных площадках России нет подходящих условий")),
                 category="lunar_feature",
                 confidence="средняя",
                 rank="interesting" if visible else "optional",
@@ -172,7 +204,7 @@ def clair_obscur(start: dt.datetime, end: dt.datetime) -> list[Event]:
                 sources=["Skyfield/DE440s", "ядро ориентации Луны DE421",
                          "критерий колонгитуды 358°, принятый наблюдателями"],
                 precision="hour",
-                meta={"feature": name, "colongitude": target},
+                meta={"feature": name, "colongitude": target, "observing_sites": sites},
             ))
     return out
 
@@ -284,12 +316,10 @@ def crescents(start: dt.datetime, end: dt.datetime) -> list[Event]:
                 continue
             age_hours = abs(offset_hours)
             t = ts.from_datetime(best_when)
-            illumination = float(almanac.fraction_illuminated(eph, "moon", t))
             out.append(Event(
                 when=best_when,
                 text=(f"{label} возрастом около {age_hours:.0f} часов "
-                      f"(Ф={illumination:.2f}".replace(".", ",")
-                      + f") — тонкий серп {description}"),
+                      f"({_moon_parameters(t)}) — тонкий серп {description}"),
                 category="lunar_feature",
                 confidence="средняя",
                 rank="optional",
@@ -305,9 +335,71 @@ def crescents(start: dt.datetime, end: dt.datetime) -> list[Event]:
 
 def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
     events: list[Event] = []
-    for producer in (clair_obscur, librations, crescents):
+    for producer in (clair_obscur, terrain_windows, librations, crescents):
         try:
             events += producer(start, end)
         except Exception:
             continue
     return sorted(events, key=lambda event: event.when)
+
+
+# USGS/IAU Gazetteer, центры объектов: координаты восточной долготы.
+TERRAIN = (
+    ("Прямая стена", -21.67, -7.70, "5230"),
+    ("Альпийская долина", 49.21, 3.63, "6290"),
+    ("кратер Тихо", -43.30, -11.22, "6163"),
+    ("кратер Коперник", 9.62, -20.08, "1296"),
+    ("горные вершины Апеннин", 19.87, 0.03, "4004"),
+)
+
+
+def feature_sun_altitude(t, latitude, longitude):
+    """Высота центра Солнца над сферическим горизонтом центра детали."""
+    position = planets()["moon"].at(t).observe(planets()["sun"]).apparent()
+    lat, lon, _ = position.frame_latlon(moon_frame())
+    cosine = (np.sin(np.radians(latitude)) * np.sin(lat.radians)
+              + np.cos(np.radians(latitude)) * np.cos(lat.radians)
+              * np.cos(lon.radians - np.radians(longitude)))
+    return np.degrees(np.arcsin(np.clip(cosine, -1, 1)))
+
+
+def terrain_windows(start, end):
+    """Низкое освещение (3°) в центре детали, без модели высот/теней."""
+    if moon_frame() is None:
+        return []
+    grid = ts_range(start, end, 120)
+    ts = timescale()
+    events = []
+    for name, lat, lon, identifier in TERRAIN:
+        heights = feature_sun_altitude(grid, lat, lon) - 3.0
+        for i in range(len(heights) - 1):
+            if heights[i] * heights[i + 1] >= 0:
+                continue
+            tt = find_zero(lambda x: float(feature_sun_altitude(ts.tt_jd(x), lat, lon)) - 3,
+                           grid[i].tt, grid[i + 1].tt)
+            t = ts.tt_jd(tt)
+            when = to_msk(t)
+            if not start <= when < end:
+                continue
+            sites = feature_sites(when, hours=4)
+            longitude, latitude = libration(t)
+            facing = (np.sin(np.radians(lat)) * np.sin(np.radians(latitude))
+                      + np.cos(np.radians(lat)) * np.cos(np.radians(latitude))
+                      * np.cos(np.radians(lon - longitude)))
+            if facing <= 0:
+                continue
+            rising = heights[i] < heights[i + 1]
+            source = f"https://planetarynames.wr.usgs.gov/Feature/{identifier}"
+            events.append(Event(
+                when=when, text=(f"Лунный рельеф: {name} у терминатора "
+                      f"({_moon_parameters(t)}), низкое {'утреннее' if rising else 'вечернее'} освещение; "
+                      + ("наблюдение: " + ", ".join(s["city"] for s in sites)
+                         if sites else "на опорных площадках нет ночного окна")),
+                category="lunar_feature", rank="interesting" if sites else "optional",
+                confidence="средняя", precision="hour",
+                computed=f"Высота Солнца 3° над сферической поверхностью в точке {lat}°, {lon}°. Геометрический критерий, не расчёт теней рельефа.",
+                notes="Приближённое окно ±4 часа; протяжённость детали и высота рельефа не моделируются",
+                sources=[source, "Skyfield/DE440s", "MOON_ME_DE421"],
+                meta={"feature": name, "feature_lat": lat, "feature_lon": lon,
+                      "sun_height_deg": 3, "observing_sites": sites, "model": "spherical_low_sun"} ))
+    return events

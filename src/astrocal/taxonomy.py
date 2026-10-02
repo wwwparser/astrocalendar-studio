@@ -90,7 +90,7 @@ def classify(event) -> str:
     if category == "eclipse":
         return "solar_eclipse" if "солнечное" in text else "lunar_eclipse"
 
-    if category == "occultation":
+    if category in ("occultation", "planetary_star_occultation"):
         return "occultation"
 
     if category == "asteroid_occultation":

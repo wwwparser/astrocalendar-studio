@@ -650,6 +650,12 @@ class MainWindow(QMainWindow):
                                        encoding="utf-8")
                 from astrocal_app.revisions import archive_calendar
                 archive_calendar(Path(path))
+        elif kind == "html":
+            path = self.preview.ask_save_path(str(cfg.OUT / f"{stem}.html"), "Telegram HTML (*.html)")
+            if path:
+                Path(path).write_text(service.publication_html(self.issue), encoding="utf-8")
+                from astrocal_app.revisions import archive_calendar
+                archive_calendar(Path(path))
         else:
             import json
             path = self.preview.ask_save_path(str(cfg.OUT / f"{stem}.json"),

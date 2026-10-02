@@ -43,8 +43,11 @@ def send(publication: Publication) -> str:
             "В .env нет TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID "
             "(шаблон — .env.example)")
     for part in publication.parts:
-        response = requests.post(API.format(token=token), timeout=30, json={
-            "chat_id": chat, "text": part.text, "disable_web_page_preview": True})
+        body = {"chat_id": chat, "text": part.text, "disable_web_page_preview": True}
+        if os.environ.get("TELEGRAM_CUSTOM_EMOJI") == "1":
+            from astrocal.custom_emoji import telegram_html
+            body.update(text=telegram_html(part.text), parse_mode="HTML")
+        response = requests.post(API.format(token=token), timeout=30, json=body)
         payload = response.json()
         if not payload.get("ok"):
             raise RuntimeError(f"Telegram отклонил часть {part.index}: {payload}")

@@ -244,6 +244,8 @@ def guess_target(event) -> tuple[object | None, float | None]:
     import re
 
     text = event.text.lower()
+    if event.category in ("lunar_feature", "moon"):
+        return body("moon"), None
     magnitude = None
     found = re.search(r"V=([+-]\d+),(\d+)m", event.text)
     if found:

@@ -321,7 +321,7 @@ def _approach_events(row, grid, ra, dec, mag, catalog, kind: str,
                 precision="hour",
                 notes=("наблюдаемо из России" if visible
                        else "из России в эти сутки не наблюдается"),
-                meta={"comet": name, "sep_deg": sep, "sep_min_deg": sep_min,
+                meta={"comet": name, "ra_deg": float(c_ra.degrees), "dec_deg": float(c_dec.degrees), "sep_deg": sep, "sep_min_deg": sep_min,
                       "alt": alt, "sun_alt": sun_alt, "visible": visible,
                       "object_mag": float(obj.magnitude if kind == "star" else obj.mag),
                       "object": f"HIP {int(obj.hip)}" if kind == "star" else obj.Name,
@@ -351,7 +351,7 @@ def _describe_dso(obj) -> str:
         label = f"{obj.messier} ({label})"
     common = (obj.common or "").split(",")[0].strip()
     if common:
-        label = f'{obj.type_gen} "{common}" {label}'
+        label = f'{obj.type_gen} «{common}» {label}'
     else:
         label = f"{obj.type_gen} {label}"
     mag = f"V={obj.mag:+.1f}m".replace(".", ",")
@@ -503,12 +503,12 @@ def milestones(start: dt.datetime, end: dt.datetime,
                         + ", ".join(f"{k} {v:+.1f}m" for k, v in sources.items()))
             out.append(Event(
                 when=when,
-                text=(f"Комета {name} в максимуме блеска "
+                text=(f"Комета {name}: наибольший ожидаемый блеск в этом месяце "
                       f"({_fmt_mag(float(magnitudes[index]))}) — расчётная оценка, "
                       f"не измерение"),
                 category="comet_milestone", confidence="низкая",
                 rank="optional",
-                computed=("минимум расчётной звёздной величины по формуле MPC"
+                computed=("минимум расчётной звёздной величины только внутри выбранного месяца; не глобальный максимум кометы; по формуле MPC"
                           + (f"; {note}" if note else "")
                           + (f"; лучшие условия: {circumstance.city.name}, "
                              f"{circumstance.stars_text}" if circumstance else "")),

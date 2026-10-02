@@ -30,7 +30,8 @@ def _cache_path(params: dict):
 def query(command: str, start: str, stop: str, step: str,
           quantities: str = "1,31", center: str = "500@399",
           timeout: int = 60, retries: int = 3,
-          site_coord: tuple[float, float, float] | None = None) -> str:
+          site_coord: tuple[float, float, float] | None = None,
+          max_cache_age_hours: float | None = None) -> str:
     """Сырой текст ответа Horizons. Результат кэшируется в data/cache.
 
     `site_coord` — (долгота в.д., широта, высота в км) для расчёта из
@@ -53,7 +54,7 @@ def query(command: str, start: str, stop: str, step: str,
 
     clock = time.monotonic()
     path = _cache_path(params)
-    if path.exists():
+    if path.exists() and (max_cache_age_hours is None or time.time() - path.stat().st_mtime <= max_cache_age_hours * 3600):
         body = path.read_text(encoding="utf-8")
         trace.fetched(f"{API}?COMMAND={command}", from_cache=True,
                       size_bytes=len(body), seconds=time.monotonic() - clock)

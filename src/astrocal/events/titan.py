@@ -92,15 +92,18 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
         const = ru_constellation(constellation_at()(
             earth().at(t).observe(body("saturn")).apparent()))
         sep = float(np.hypot(x[i], y[i]))
+        limb = sep - saturn_radius_arcsec(t)
+        base_text = (f"Спутник Титан ({magnitude(TITAN_MAG)}) расположен "
+                  f"в {number(sep)}″ {'севернее' if north else 'южнее'} "
+                  f"Сатурна ({planet_label('saturn', t)}), "
+                  f"созвездие {const}")
+
         out.append(Event(
             when=when,
             # Порядок слов и разделение от центра диска — как принято у
             # наблюдателей: сначала на сколько отстоит, потом в какую сторону.
             # Расстояние до края диска не теряется, оно в протоколе расчёта.
-            text=(f"Спутник Титан ({magnitude(TITAN_MAG)}) расположен "
-                  f"в {number(sep)}″ {'севернее' if north else 'южнее'} "
-                  f"Сатурна ({planet_label('saturn', t)}), "
-                  f"созвездие {const}"),
+            text=base_text + f", Титан в {limb_text(sep, t)}",
             category="saturn_moons",
             computed=(f"смена знака ΔRA·cosδ Титан–Сатурн; Титан в "
                       f"{limb_text(sep, t)}; разделение от центра "
@@ -110,6 +113,7 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
                       f"высота Сатурна из Москвы {alt:.0f}°"),
             sources=["JPL Horizons (sat-эфемериды)", "Skyfield/DE440s (Сатурн, видимость)"],
             precision="hour",
+            meta={"identity_text": base_text, "center_separation_arcsec": sep, "limb_separation_arcsec": limb},
         ))
     return out
 

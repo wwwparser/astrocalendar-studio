@@ -70,9 +70,13 @@ def main(argv: list[str]) -> int:
 
     out_post.write_text(render_post(published, year, month, icons=icons), encoding="utf-8")
     out_md.write_text(render_markdown(published, year, month), encoding="utf-8")
+    from astrocal.custom_emoji import telegram_html
+    out_html = cfg.OUT / f"calendar_{year:04d}-{month:02d}.html"
+    out_html.write_text(telegram_html(out_post.read_text(encoding="utf-8")), encoding="utf-8")
     from astrocal_app.revisions import archive_calendar
     archive_calendar(out_post)
     archive_calendar(out_md)
+    archive_calendar(out_html)
     out_protocol.write_text(render_protocol(events, extra, year, month, checks),
                             encoding="utf-8")
     out_qa.write_text(render_qa_report(events, published, extra, result, year, month),

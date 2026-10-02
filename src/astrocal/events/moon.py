@@ -308,7 +308,7 @@ def conjunctions_with_deep_sky(start: dt.datetime, end: dt.datetime,
                 else obj.Name
             common = dso_common_name(obj.messier, obj.Name, obj.common)
             if common:
-                label = f"{label} {common}"
+                label = f"{label} «{common}»"
             mag = f"V={obj.mag:+.1f}m".replace(".", ",")
             const = ru_constellation(constellation_at()(
                 earth().at(t).observe(target).apparent()))

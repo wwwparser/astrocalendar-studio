@@ -93,11 +93,12 @@ class TelegramPreview(QWidget):
         self.save_txt_button = QPushButton("TXT")
         self.save_md_button = QPushButton("Markdown")
         self.save_json_button = QPushButton("JSON")
+        self.save_html_button = QPushButton("TG HTML")
         save_label = QLabel("Сохранить:")
         save_label.setObjectName("Muted")
         bottom_row.addWidget(save_label)
         for button in (self.save_txt_button, self.save_md_button,
-                       self.save_json_button):
+                       self.save_json_button, self.save_html_button):
             bottom_row.addWidget(button, 1)
         layout.addLayout(bottom_row)
 
@@ -105,6 +106,7 @@ class TelegramPreview(QWidget):
         self.save_txt_button.clicked.connect(lambda: self.save_requested.emit("txt"))
         self.save_md_button.clicked.connect(lambda: self.save_requested.emit("md"))
         self.save_json_button.clicked.connect(lambda: self.save_requested.emit("json"))
+        self.save_html_button.clicked.connect(lambda: self.save_requested.emit("html"))
         self.send_button.clicked.connect(self.send_requested.emit)
 
     # ------------------------------------------------------------ обновление

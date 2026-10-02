@@ -10,8 +10,6 @@
 """
 from __future__ import annotations
 
-from ..fmt import MONTHS_GEN
-
 import datetime as dt
 
 import numpy as np
@@ -29,9 +27,9 @@ STATIONS = {
             "lat": 55.76, "lon": 37.62, "where": "над Европейской частью России",
             "site": "Москва"},
     48274: {"label": "ККС", "cache": "css_tle.txt", "min_alt": 15.0,
-            "lat": 47.24, "lon": 39.71,
+            "lat": 43.5855, "lon": 39.7231,
             "where": "над югом Европейской части России",
-            "site": "Ростов-на-Дону"},
+            "site": "Сочи"},
 }
 TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?CATNR={catnr}&FORMAT=tle"
 
@@ -70,7 +68,7 @@ def visible_passes(sat: EarthSatellite, start: dt.datetime, end: dt.datetime,
     sunlit = sat.at(grid).is_sunlit(planets())
     observer = planets()["earth"] + site
     sun_alt = observer.at(grid).observe(body("sun")).apparent().altaz()[0].degrees
-    good = (alt > min_alt) & sunlit & (sun_alt < -6.0) & (sun_alt > -18.0)
+    good = (alt > min_alt) & sunlit & (sun_alt < -6.0)
 
     passes = []
     i = 0
@@ -125,14 +123,13 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
         if sat is None:
             continue
         epoch = to_msk(sat.epoch)
-        passes = visible_passes(sat, start, end, station["lat"], station["lon"],
+        passes = visible_passes(sat, start - dt.timedelta(days=6), end + dt.timedelta(days=6), station["lat"], station["lon"],
                                 station["min_alt"])
-        for group in series(passes):
+        for group in [group for evening_slot in (False, True)
+                      for group in series([item for item in passes if (item[0].hour >= 12) == evening_slot])]:
             first_when, first_alt = group[0]
             last_when, _ = group[-1]
-            if first_when < start + dt.timedelta(days=1):
-                continue        # серия началась в прошлом месяце
-            age_days = abs((first_when - epoch).days)
+            age_days = abs((first_when - epoch).total_seconds()) / 86400
             if age_days > PUBLISHABLE_MAX_AGE_DAYS:
                 confidence, rank = "низкая", "technical"
             elif age_days > EXACT_TIME_MAX_AGE_DAYS:
@@ -145,19 +142,20 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
             if age_days <= EXACT_TIME_MAX_AGE_DAYS:
                 text = (f"Начало периода {'вечерней' if evening else 'утренней'} видимости "
                         f"пролётов {label} {where}: "
-                        f"{first_when:%d}–{last_when:%d} {MONTHS_GEN[start.month]}, "
+                        f"{first_when:%d} {MONTHS_GEN[first_when.month]}–{last_when:%d} {MONTHS_GEN[last_when.month]}, "
                         f"лучший пролёт {best[0]:%d} {MONTHS_GEN[best[0].month]}, "
                         f"высота до {best[1]:.0f}° ({site})")
                 precision = "minute"
             else:
                 text = (f"Начало периода {'вечерней' if evening else 'утренней'} видимости "
                         f"пролётов {label} {where}: "
-                        f"{first_when:%d}–{last_when:%d} {MONTHS_GEN[start.month]}, "
+                        f"{first_when:%d} {MONTHS_GEN[first_when.month]}–{last_when:%d} {MONTHS_GEN[last_when.month]}, "
                         f"лучший пролёт {best[0]:%d} {MONTHS_GEN[best[0].month]}, "
                         f"высота до {best[1]:.0f}° ({site})")
-                precision = "hour"
+                precision = "day"
 
-            out.append(Event(
+            if start <= first_when < end:
+                out.append(Event(
                 when=first_when,
                 text=text,
                 category="iss",
@@ -168,17 +166,29 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
                           f"{first_alt:.0f}° (площадка {station['lat']:.1f}°N, "
                           f"{station['lon']:.1f}°E, порог {station['min_alt']:.0f}°); "
                           f"эпоха TLE {epoch:%Y-%m-%d %H:%M} МСК, возраст на дату "
-                          f"события {age_days} сут"),
+                          f"события {age_days:.1f} сут"),
                 sources=[f"Celestrak TLE {catnr}", "Skyfield SGP4"],
                 precision=precision,
                 notes=("точное время пролёта пересчитать за 2–3 суток до даты: "
                        "scripts/refresh_passes.py"
                        if age_days > EXACT_TIME_MAX_AGE_DAYS else ""),
                 meta={"max_alt": best[1], "tle_age_days": age_days,
-                      "station": label, "series": (first_when, last_when),
+                      "station": label, "site": site, "boundary": "start", "series": (first_when, last_when),
                       "passes": len(group)},
                 provenance={"tle_epoch_msk": epoch.isoformat(),
                             "tle_age_days": age_days,
                             "exact_time_published": age_days <= EXACT_TIME_MAX_AGE_DAYS},
             ))
-    return out
+            if start <= last_when < end:
+                ending_age = abs((last_when - epoch).total_seconds()) / 86400
+                out.append(Event(
+                    when=last_when,
+                    text=f"Окончание периода {'вечерней' if evening else 'утренней'} видимости пролётов {label} ({site})",
+                    category="iss", rank="technical" if ending_age > PUBLISHABLE_MAX_AGE_DAYS else "interesting",
+                    confidence="высокая" if ending_age <= EXACT_TIME_MAX_AGE_DAYS else "средняя" if ending_age <= PUBLISHABLE_MAX_AGE_DAYS else "низкая",
+                    precision="minute" if ending_age <= EXACT_TIME_MAX_AGE_DAYS else "day",
+                    computed=f"Последний прогнозируемый пролёт серии; эпоха TLE {epoch.isoformat()}, возраст {ending_age:.1f} сут",
+                    notes="Граница серии зависит от TLE; уточнить за 2–3 суток", sources=[f"Celestrak TLE {catnr}", "Skyfield SGP4"],
+                    meta={"station": label, "site": site, "boundary": "end", "tle_age_days": ending_age},
+                    provenance={"tle_epoch_msk": epoch.isoformat(), "exact_time_published": ending_age <= EXACT_TIME_MAX_AGE_DAYS}))
+    return sorted(out, key=lambda event: event.when)

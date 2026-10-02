@@ -126,6 +126,8 @@ def collect(start: dt.datetime, end: dt.datetime) -> tuple[list[Event], dict]:
                      "Контрольный каталог French & Souami 2023, 2023–2050. G/K не подменяются V; время сближения не равно локальному контакту."):
         from .planetary_occultation_catalog import month_report
         extra["planetary_occultation_catalog"] = month_report(start, end)
+        from .events.planetary_stellar_occultations import build as planetary_stars
+        add("planetary_occultation_catalog", planetary_stars(extra["planetary_occultation_catalog"]))
 
     with _step("eclipses"):
         eclipse_events, eclipse_report = eclipses.all_events(start, end)
@@ -210,6 +212,12 @@ def collect(start: dt.datetime, end: dt.datetime) -> tuple[list[Event], dict]:
 
     before = len(events)
     events = [e for e in events if start <= e.when < end]
+    from .solar_context import enrich
+    for event in events:
+        try:
+            enrich(event)
+        except Exception as error:
+            event.meta["solar_context_error"] = str(error)
     if before != len(events):
         trace.note(f"вне границ месяца отброшено событий: {before - len(events)}")
     events.sort(key=lambda e: (e.display_time, e.text))
@@ -259,7 +267,8 @@ def render_markdown(events: list[Event], year: int, month: int) -> str:
         body.append(f"**{day} {MONTHS_GEN[month]}**, {weekday}")
         body.append("")
         for event in items:
-            body.append(f"{icon_for(event)} **{event.display_time:%H:%M}** — "
+            time_label = "период" if event.precision == "day" else event.display_time.strftime("%H:%M")
+            body.append(f"{icon_for(event)} **{time_label}** — "
                         f"{event.text}")
         body.append("")
 

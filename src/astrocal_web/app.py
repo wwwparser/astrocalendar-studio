@@ -367,6 +367,8 @@ def _routes(application: FastAPI) -> None:
                               ensure_ascii=False, indent=2)
             return Response(body, media_type="application/json",
                             headers=_attachment(f"{stem}.json"))
+        if kind == "html":
+            return PlainTextResponse(service.publication_html(issue), headers=_attachment(f"{stem}.html"))
         if kind == "protocol":
             return PlainTextResponse(service.protocol_text(issue),
                                      headers=_attachment(f"protocol_{stem}.md"))

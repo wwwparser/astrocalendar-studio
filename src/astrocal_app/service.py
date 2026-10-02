@@ -95,6 +95,11 @@ def publication_markdown(issue: Issue) -> str:
     return telegram.as_markdown(issue.header, issue.lines())
 
 
+def publication_html(issue: Issue) -> str:
+    from astrocal.custom_emoji import telegram_html
+    return telegram_html(publication(issue).plain_text)
+
+
 def publication_json(issue: Issue) -> dict:
     """Машинная выдача выпуска — для архива и внешних инструментов."""
     return {

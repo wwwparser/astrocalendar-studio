@@ -311,7 +311,7 @@ def build(start: dt.datetime, end: dt.datetime, star_mag_limit: float = 7.0,
                    if reliable else
                    "при сдвиге полосы на заявленную ошибку она уходит с территории "
                    "России — событие ненадёжно"),
-            meta={"asteroid": c.asteroid_number, "star": c.star_id,
+            meta={"asteroid": c.asteroid_number, "star": c.star_id, "ra_deg": c.star_ra_deg, "dec_deg": c.star_dec_deg,
                   "sigma_km": c.sigma_km, "path": result["path"],
                   "star_mag": c.star_mag, "asteroid_mag": c.asteroid_mag,
                   "magnitude_drop": c.magnitude_drop,

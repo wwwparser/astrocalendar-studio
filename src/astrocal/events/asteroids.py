@@ -169,7 +169,7 @@ def approaches(start: dt.datetime, end: dt.datetime) -> list[Event]:
                                       float(d[i]))),
                         sources=["JPL Horizons", "Hipparcos / OpenNGC"],
                         precision="hour",
-                        meta={"number": number, "sep_deg": float(d[i]),
+                        meta={"number": number, "sep_deg": float(d[i]), "ra_deg": float(ra[i]), "dec_deg": float(dec[i]),
                               "object_mag": float(obj.magnitude if kind == "star"
                                                   else obj.mag),
                               "kind": kind, "mag": float(mag[i]),

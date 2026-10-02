@@ -419,7 +419,57 @@ def build(start: dt.datetime, end: dt.datetime,
     chosen.sort(key=lambda a: (-{"must": 2, "interesting": 1}.get(a.rank, 0),
                                a.distance_ld))
     chosen = chosen[:limit or cfg.NEO_MAX_IN_CALENDAR]
-    return sorted([to_event(item) for item in chosen], key=lambda e: e.when)
+    events = []
+    for item in chosen:
+        event = to_event(item)
+        event.meta["identity_text"] = event.text
+        try:
+            peak = magnitude_peak(item)
+            event.meta.update(peak)
+            event.provenance["magnitude"] = {"source": "JPL Horizons APmag", "window_days": 7,
+                                             "sample_minutes": 20, "estimated": True,
+                                             "computed_at": dt.datetime.now(dt.timezone.utc).isoformat()}
+            if peak.get("peak_magnitude") is not None:
+                event.text += f", ожидаемый наибольший блеск около сближения {number(peak['peak_magnitude'], 1, sign=True)}m (±7 суток)"
+                event.sources.append("JPL Horizons, observer APmag")
+                event.computed += f"; максимум блеска на сетке 20 мин в окне ±7 суток: {peak['peak_time_utc']}"
+            else:
+                event.text += ", видимый блеск неизвестен"
+        except Exception as error:
+            event.text += ", видимый блеск неизвестен"
+            event.meta["magnitude_error"] = str(error)
+        events.append(event)
+    return sorted(events, key=lambda e: e.when)
+
+
+def magnitude_peak(approach):
+    """Минимум прогнозного APmag за ±7 суток, геоцентр, шаг 20 мин."""
+    from ..horizons import query, table, column_named
+    centre = approach.close_approach_datetime.astimezone(dt.timezone.utc)
+    text = query(f"{approach.designation};",
+                 (centre - dt.timedelta(days=7)).strftime("%Y-%m-%d %H:%M"),
+                 (centre + dt.timedelta(days=7)).strftime("%Y-%m-%d %H:%M"),
+                 "20m", quantities="1,9,23", timeout=40, retries=1, max_cache_age_hours=24)
+    samples = []
+    records = table(text)
+    positions = [row for row in records if _to_float(column_named(row, "R.A.")) is not None and _to_float(column_named(row, "DEC")) is not None]
+    coordinates = {}
+    if positions:
+        near = min(positions, key=lambda row: abs((dt.datetime.strptime(row["_time"], "%Y-%b-%d %H:%M").replace(tzinfo=dt.timezone.utc) - centre).total_seconds()))
+        coordinates = {"ra_deg": _to_float(column_named(near, "R.A.")), "dec_deg": _to_float(column_named(near, "DEC")), "coordinates_sample_utc": near["_time"]}
+    for record in records:
+        value = _to_float(column_named(record, "APmag"))
+        if value is not None:
+            samples.append((value, record))
+    if not samples:
+        return {"peak_magnitude": None, "peak_model": "Horizons APmag", "peak_window_days": 7, **coordinates}
+    value, record = min(samples, key=lambda pair: pair[0])
+    stamp = dt.datetime.strptime(record["_time"], "%Y-%b-%d %H:%M").replace(tzinfo=dt.timezone.utc)
+    return {"peak_magnitude": value, "peak_time_utc": stamp.isoformat(),
+            "peak_model": "Horizons APmag", "peak_window_days": 7,
+            "peak_at_window_boundary": record in (samples[0][1], samples[-1][1]),
+            "peak_elongation_deg": _to_float(column_named(record, "S-O-T")),
+            **coordinates}
 
 
 # ------------------------------------------------------------------ яркие за год

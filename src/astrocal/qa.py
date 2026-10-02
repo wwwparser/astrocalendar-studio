@@ -24,6 +24,7 @@ from .core import Event, body, earth, timescale
 from .fmt import CONSTELLATIONS_RU, MONTHS_GEN
 
 LINE_PATTERN = re.compile(r"^▪️\d{2} [а-яё]+, \d{2}:\d{2} — .+$")
+DAY_LINE_PATTERN = re.compile(r"^▪️\d{2} [а-яё]+ — .+$")
 MAGNITUDE_PATTERN = re.compile(r"V=[+-]\d+,\d+m")
 ANGLE_PATTERN = re.compile(r"(\d+\.\d+°|0°\d+′|\d+″)")
 
@@ -52,7 +53,8 @@ def _add(event: Event, level: str, check: str, message: str) -> None:
 
 def check_format(event: Event) -> None:
     line = event.line()
-    if not LINE_PATTERN.match(line):
+    pattern = DAY_LINE_PATTERN if event.precision == "day" else LINE_PATTERN
+    if not pattern.match(line):
         _add(event, "REVIEW", "format", f"строка не соответствует формату: {line!r}")
     if "." in line.split("—", 1)[-1] and "V=" in line:
         for token in re.findall(r"V=[^\s)]+", line):
@@ -257,7 +259,7 @@ def run(events: list[Event], start: dt.datetime, end: dt.datetime,
     for event in events:
         event.flags = []
         if event.meta.get("requires_review"):
-            _add(event, "REVIEW", "external_prediction", "Прогноз внешнего контрольного списка не подтверждён актуальным расчётом. Публикация запрещена до проверки.")
+            _add(event, "REVIEW", "external_prediction", event.meta.get("review_reason", "Прогноз внешнего контрольного списка не подтверждён актуальным расчётом. Публикация запрещена до проверки."))
         check_format(event)
         check_timezone(event, start, end)
         check_moon_distance(event)
