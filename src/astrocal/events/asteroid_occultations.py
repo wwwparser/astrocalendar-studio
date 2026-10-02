@@ -217,7 +217,13 @@ def sun_altitude(lat: float, lon: float, when: dt.datetime) -> float:
     return float(site.at(t).observe(body("sun")).apparent().altaz()[0].degrees)
 
 
-def build(start: dt.datetime, end: dt.datetime, star_mag_limit: float = 6.0,
+def publication_candidate(candidate) -> bool:
+    return (np.isfinite(candidate.star_mag) and candidate.star_mag <= 7.0
+            and np.isfinite(candidate.diameter_km) and candidate.diameter_km > 10.0
+            and np.isfinite(candidate.max_duration_s) and candidate.max_duration_s > 1.0)
+
+
+def build(start: dt.datetime, end: dt.datetime, star_mag_limit: float = 7.0,
           min_drop_mag: float = 1.5, max_sun_alt: float = -6.0):
     """События календаря + полный отчёт по всем разобранным кандидатам.
 
@@ -226,9 +232,11 @@ def build(start: dt.datetime, end: dt.datetime, star_mag_limit: float = 6.0,
     """
     events, report = [], []
     for candidate in candidates(start.year, start.month, star_mag_limit):
-        if not star_above_russia(candidate.predicted_utc,
-                                 candidate.star_ra_deg, candidate.star_dec_deg):
+        if not publication_candidate(candidate):
+            report.append({"candidate": candidate, "skipped": "звезда/диаметр/длительность вне редакционных порогов"})
             continue
+        # Не фильтруем по высоте звезды в старое время годового прогноза:
+        # свежая орбита сдвигает его на часы и меняет местную ночь/день.
         try:
             result = analyse(candidate)
         except Exception as exc:
@@ -311,7 +319,22 @@ def build(start: dt.datetime, end: dt.datetime, star_mag_limit: float = 6.0,
                   "path_width_km": c.diameter_km,
                   "constellation": constellation},
         ))
-    return _deduplicate(events), report
+    events = _deduplicate(events)
+    comparison = compare_with_control(events, start.year, start.month)
+    for entry in comparison["missing"]:
+        month_number, day = (int(part) for part in entry["date"].split("-"))
+        hour, minute = (int(part) for part in entry["time_msk"].split(":"))
+        events.append(Event(
+            when=dt.datetime(start.year, month_number, day, hour, minute, tzinfo=cfg.MSK),
+            text=f"Неподтверждённый прогноз: ({entry['asteroid_number']}) {entry['asteroid_name']} покрывает {entry['star']} — требуется проверка полосы",
+            category="asteroid_occultation", confidence="низкая", rank="technical",
+            computed="Событие из контрольного списка Astrovert не прошло актуальный расчёт/редакционный отбор. Не является подтверждённым покрытием.",
+            sources=[comparison["source"]], precision="minute",
+            notes="Не включать в публикацию без уточнения геометрии и источника.",
+            meta={"asteroid": entry["asteroid_number"], "requires_review": True,
+                  "unconfirmed_prediction": True, "reference": entry},
+        ))
+    return events, report
 
 
 def _deduplicate(events: list[Event], hours: float = 2.0) -> list[Event]:
@@ -688,7 +711,9 @@ def compare_with_control(items: list, year: int, month: int | None = None,
     if month is not None:
         expected = [e for e in expected if int(e["date"][:2]) == month]
 
-    ours = [(item, _our_number(item), _our_date(item)) for item in items]
+    ours = [(item, _our_number(item), _our_date(item)) for item in items
+            if _our_number(item) is not None
+            and not (getattr(item, "meta", None) or {}).get("unconfirmed_prediction")]
     matched, missing = [], []
 
     for entry in expected:

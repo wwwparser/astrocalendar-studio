@@ -159,6 +159,13 @@ CATALOGUE: tuple[Source, ...] = (
              "нашего расчёта",
         local="control_occultations_2026.json"),
     Source(
+        key="rms_annex", name="RMS Annex: покрытия звёзд планетами", kind="каталог",
+        maintainer="French & Souami / PDS Ring-Moon Systems Node",
+        url="https://pds-rings.seti.org/rms-annex/french23_occult_pred/",
+        cadence="опубликован в 2023 году, период 2023–2050",
+        we_take="контрольные кандидаты Юпитера, Сатурна, Урана, Нептуна, Титана и Тритона",
+        note="G/K не заменяют V; время сближения не является местным контактом. Нужна отдельная проверка наблюдаемости."),
+    Source(
         key="tns", name="Transient Name Server", kind="лента",
         maintainer="Международный астрономический союз",
         url="https://www.wis-tns.org/",
@@ -212,6 +219,7 @@ def by_kind() -> dict[str, list[Source]]:
 # домене живут и файлы эфемерид, и Horizons, и база малых тел, и по одному
 # имени хоста их не различить.
 URL_MARKERS = (
+    ("pds-rings.seti.org/rms-annex", "rms_annex"),
     ("horizons.api", "horizons"),
     ("/cad.api", "cneos"),
     ("/sbdb.api", "sbdb"),

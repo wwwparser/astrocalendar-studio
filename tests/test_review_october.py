@@ -241,7 +241,7 @@ def test_venus_phase_keeps_three_digits_when_tiny():
     from astrocal.core import timescale
 
     t = timescale().utc(2026, 10, 24, 3, 44)
-    assert "Ф=0,006" in planet_label("venus", t)
+    assert "Ф=-0,006" in planet_label("venus", t)
 
 
 def test_planet_diameter_stays_in_arcseconds():
@@ -327,12 +327,12 @@ def test_pleiades_are_named_instead_of_alcyone():
     start = dt.datetime(2026, 10, 1, tzinfo=cfg.MSK)
     end = dt.datetime(2026, 11, 1, tzinfo=cfg.MSK)
     events, _report = occultations.build_stars(start, end)
-    pleiades = [e for e in events if "Плеяды" in e.text]
+    pleiades = [e for e in events if "Плеяд" in e.text]
     assert len(pleiades) == 1
     text = pleiades[0].text
     assert "Альциона" not in text
-    assert text.startswith("Тесное соединение и покрытие звёздного скопления")
-    assert "видимое почти со всей территории России" in text
+    assert text.startswith("Покрытие северной части Плеяд")
+    assert "видимое в Европейской части России" in text
 
 
 def test_cluster_band_is_wider_than_one_star():
@@ -370,10 +370,10 @@ def test_libration_wording_marks_the_strong_ones():
 
     start, end = config_module.month_bounds(2026, 10)
     for event in lunar_features.librations(start, end):
-        if event.meta["strong"]:
-            assert event.text.startswith("Благоприятная либрация")
-        else:
-            assert event.text.startswith("Либрация:")
+        assert event.text.startswith("Наибольшая ")
+        assert "Ф=" in event.text and "D=" in event.text
+        assert "видна область" in event.text
+
 
 
 def test_telegram_split_counts_utf16_units():

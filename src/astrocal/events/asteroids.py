@@ -128,7 +128,15 @@ def approaches(start: dt.datetime, end: dt.datetime) -> list[Event]:
                 # Берём наилучшее сближение за месяц, а не только внутренние
                 # локальные минимумы: астероид может весь месяц приближаться к
                 # звезде и разойтись с ней уже в следующем.
-                candidates = np.where(dark & np.isfinite(d), d, 1e9)
+                target_alt = site.at(grid).observe(_star_at(obj.ra_degrees, obj.dec_degrees)).apparent().altaz()[0].degrees
+                south_alt = south.at(grid).observe(_star_at(obj.ra_degrees, obj.dec_degrees)).apparent().altaz()[0].degrees
+                sun_north = site.at(grid).observe(body("sun")).apparent().altaz()[0].degrees
+                sun_south = south.at(grid).observe(body("sun")).apparent().altaz()[0].degrees
+                sun_ra, sun_dec, _ = earth().at(grid).observe(body("sun")).apparent().radec()
+                elongation = angular_distance_deg(ra, dec, sun_ra.degrees, sun_dec.degrees)
+                visible = (((target_alt >= 10) & (sun_north <= -12))
+                           | ((south_alt >= 10) & (sun_south <= -12))) & (elongation >= 30)
+                candidates = np.where(visible & np.isfinite(d), d, 1e9)
                 i = int(np.argmin(candidates))
                 if not np.isfinite(candidates[i]) or candidates[i] > APPROACH_LIMIT_DEG:
                     continue
@@ -165,9 +173,11 @@ def approaches(start: dt.datetime, end: dt.datetime) -> list[Event]:
                               "object_mag": float(obj.magnitude if kind == "star"
                                                   else obj.mag),
                               "kind": kind, "mag": float(mag[i]),
+                              "object": f"HIP {int(obj.hip)}" if kind == "star" else obj.Name,
+                              "elongation_deg": float(elongation[i]),
                               "messier": kind == "dso" and is_messier(obj.messier)},
                     ))
-    return _deduplicate([e for e in out if interesting(e.meta)])
+    return _deduplicate([e for e in out if interesting(e.meta)], per_asteroid=None)
 
 
 def _star_at(ra_deg: float, dec_deg: float):
@@ -183,27 +193,27 @@ def interesting(meta: dict) -> bool:
     объектов.
     """
     sep, obj_mag, mag = meta["sep_deg"], meta["object_mag"], meta["mag"]
+    if meta["kind"] == "star":
+        return crossmatch.by_new_rules(mag, "star", obj_mag, False, sep)
     if crossmatch.by_new_rules(mag, meta["kind"], obj_mag,
                                bool(meta["messier"]), sep):
         return True
     if mag > MAG_LIMIT:
         return False
-    if meta["kind"] == "star":
-        return ((obj_mag <= 4.0 and sep <= 2.5) or (obj_mag <= 6.0 and sep <= 1.0)
-                or sep <= 0.3)
     return (meta["messier"] or obj_mag <= 8.0) and sep <= 1.5
 
 
 def _deduplicate(events: list[Event], hours: float = 24.0,
-                 per_asteroid: int = 3) -> list[Event]:
-    """Не больше per_asteroid строк на объект за месяц, самые тесные."""
+                 per_asteroid: int | None = None) -> list[Event]:
+    """Повторы одной пары удаляются; общего месячного лимита по умолчанию нет."""
     kept: list[Event] = []
     counts: dict[int, int] = {}
     for ev in sorted(events, key=lambda e: e.meta["sep_deg"]):
         number = ev.meta["number"]
-        if counts.get(number, 0) >= per_asteroid:
+        if per_asteroid is not None and counts.get(number, 0) >= per_asteroid:
             continue
         if any(other.meta["number"] == number
+               and other.meta.get("object") == ev.meta.get("object")
                and abs((other.when - ev.when).total_seconds()) < hours * 3600
                for other in kept):
             continue

@@ -8,7 +8,8 @@ from skyfield import almanac
 
 from ..core import (Event, body, constellation_at, earth, local_minima, planets,
                     refine_minimum, separation_deg, timescale, to_msk, ts_range)
-from ..apparent import moon_label, planet_label
+from ..apparent import moon_label, planet_label, angular_diameter_arcsec, format_diameter
+from ..encounters import observing_time, direction_at
 from ..fmt import angle_deg, distance_km, ru_constellation
 
 # Формулировки как в AstroAlert: "в фазе новолуние", но "в фазе последней четверти"
@@ -46,7 +47,7 @@ def phases(start: dt.datetime, end: dt.datetime) -> list[Event]:
     for t, w in zip(times, which):
         out.append(Event(
             when=to_msk(t),
-            text=(f"Луна в фазе {PHASE_NAMES[int(w)]} "
+            text=(f"Луна в фазе {PHASE_NAMES[int(w)]} (D={format_diameter(angular_diameter_arcsec('moon', t))}) "
                   f"в созвездии {_moon_constellation(t)}"),
             category="moon",
             computed=("almanac.moon_phases по DE440s, точный момент "
@@ -107,11 +108,11 @@ def direction(t, target, reference) -> str:
 
 def conjunctions_with_planets(start: dt.datetime, end: dt.datetime,
                               limit_deg: float = 7.5,
-                              skip_below_deg: float = 1.30) -> list[Event]:
+                              skip_below_deg: float = 0.0) -> list[Event]:
     """Минимумы геоцентрического углового расстояния Луна–планета.
 
-    Сближения теснее skip_below_deg отдаём модулю покрытий: там нужна полоса
-    видимости, а не строка «проходит в N° севернее».
+    По умолчанию тесные сближения не теряются: покрытие может проходить
+    вне России или днём. Геоцентрический минимум сохраняется отдельно.
     """
     from ..magnitudes import planet_magnitude
 
@@ -136,6 +137,15 @@ def conjunctions_with_planets(start: dt.datetime, end: dt.datetime,
             d = sep_at(tt)
             if not (start <= when < end) or d > limit_deg or d < skip_below_deg:
                 continue
+            minimum_when, minimum_sep = when, d
+            visible = observing_time(when, moon, target, limit_deg)
+            if visible is None:
+                continue
+            t, site, city = visible
+            when = to_msk(t)
+            if not start <= when < end:
+                continue
+            d = float(site.at(t).observe(moon).apparent().separation_from(site.at(t).observe(target).apparent()).degrees)
             frac, waxing = illum_and_waxing(t)
             mag = planet_magnitude(name, t)
             const = ru_constellation(constellation_at()(
@@ -143,21 +153,22 @@ def conjunctions_with_planets(start: dt.datetime, end: dt.datetime,
             out.append(Event(
                 when=when,
                 text=(f"Луна ({moon_label(t, frac, waxing)}) проходит в "
-                      f"{angle_deg(d)} {direction(t, moon, target)} "
+                      f"{angle_deg(d)} {direction_at(t, moon, target, site)} "
                       f"{PLANET_GEN[name]} ({planet_label(name, t, mag)}) "
-                      f"в созвездии {const}"),
+                      f"в созвездии {const} ({city})"),
                 category="moon",
-                computed=f"минимум геоцентрического расстояния Луна–{name}: {d:.3f}°",
+                computed=f"геоцентрический минимум {minimum_sep:.3f}° в {minimum_when.isoformat()}; наблюдательное время для {city}, топоцентрическое разделение {d:.3f}°",
+                meta={"planet": name, "time_semantics": "observing", "city": city, "minimum_when": minimum_when.isoformat(), "minimum_sep_deg": minimum_sep, "sep_deg": d},
                 sources=["Skyfield/DE440s"],
-                precision="hour",
+                precision="minute",
             ))
     return out
 
 
 def conjunctions_with_stars(start: dt.datetime, end: dt.datetime,
-                            limit_deg: float = 6.0,
+                            limit_deg: float = 4.0,
                             star_mag_limit: float = 2.6,
-                            skip_below_deg: float = 1.30) -> list[Event]:
+                            skip_below_deg: float = 0.0) -> list[Event]:
     """Сближения Луны с яркими звёздами (только те, что Луна вообще может задеть).
 
     Прохождения теснее skip_below_deg отдаём модулю покрытий: там считается
@@ -202,22 +213,34 @@ def conjunctions_with_stars(start: dt.datetime, end: dt.datetime,
                 continue
             hip = int(star_row.hip)
             name = STAR_NAMES_RU.get(hip)
+            if name is None:
+                continue  # безымянные слабые звёзды оставляем в каталоге покрытий
             label = (f"звезды {name} (V={star_row.magnitude:+.1f}m)".replace(".", ",")
                      if name else
                      f"звезды HIP {hip} (V={star_row.magnitude:+.1f}m)".replace(".", ","))
+            minimum_when, minimum_sep = when, best
+            visible = observing_time(when, body("moon"), target, limit_deg + 1.5, min_altitude=2.0)
+            if visible is None:
+                continue
+            t, site, city = visible
+            when = to_msk(t)
+            if not start <= when < end:
+                continue
+            best = float(site.at(t).observe(body("moon")).apparent().separation_from(site.at(t).observe(target).apparent()).degrees)
             frac, waxing = illum_and_waxing(t)
             const = ru_constellation(constellation_at()(
                 earth().at(t).observe(target).apparent()))
             out.append(Event(
                 when=when,
                 text=(f"Луна ({moon_label(t, frac, waxing)}) проходит в "
-                      f"{angle_deg(best)} {direction(t, body('moon'), target)} "
-                      f"{label} в созвездии {const}"),
+                      f"{angle_deg(best)} {direction_at(t, body('moon'), target, site)} "
+                      f"{label} в созвездии {const} ({city})"),
                 category="moon",
                 computed=(f"минимум геоцентрического расстояния Луна–HIP {hip}: "
-                          f"{best:.3f}°"),
+                          f"{minimum_sep:.3f}° в {minimum_when.isoformat()}; наблюдательное время для {city}, топоцентрическое разделение {best:.3f}°"),
                 sources=["Skyfield/DE440s", "Hipparcos"],
-                precision="hour",
+                precision="minute",
+                meta={"hip": hip, "time_semantics": "observing", "city": city, "minimum_when": minimum_when.isoformat(), "minimum_sep_deg": minimum_sep, "sep_deg": best},
             ))
     return out
 
@@ -270,6 +293,16 @@ def conjunctions_with_deep_sky(start: dt.datetime, end: dt.datetime,
             best = sep_at(tt)
             if not (start <= when < end) or best > limit_deg:
                 continue
+            minimum_when, minimum_sep = when, best
+            visible = observing_time(when, body("moon"), target, limit_deg + 1.5)
+            if visible is None:
+                continue
+            t, site, city = visible
+            when = to_msk(t)
+            if not start <= when < end:
+                continue
+            best = float(site.at(t).observe(body("moon")).apparent().separation_from(
+                site.at(t).observe(target).apparent()).degrees)
             frac, waxing = illum_and_waxing(t)
             label = obj.messier if isinstance(obj.messier, str) and obj.messier \
                 else obj.Name
@@ -282,14 +315,14 @@ def conjunctions_with_deep_sky(start: dt.datetime, end: dt.datetime,
             out.append(Event(
                 when=when,
                 text=(f"Луна ({moon_label(t, frac, waxing)}) проходит в "
-                      f"{angle_deg(best)} {direction(t, body('moon'), target)} "
+                      f"{angle_deg(best)} {direction_at(t, body('moon'), target, site)} "
                       f"{obj.type_gen} {label} ({mag}) в созвездии {const}"),
                 category="moon",
                 computed=(f"минимум геоцентрического расстояния Луна–{obj.Name}: "
-                          f"{best:.3f}°"),
+                          f"{minimum_sep:.3f}° в {minimum_when.isoformat()}; наблюдательное время для {city}, топоцентрическое разделение {best:.3f}°"),
                 sources=["Skyfield/DE440s", "OpenNGC"],
-                precision="hour",
-                meta={"object": obj.Name, "sep_deg": best,
+                precision="minute",
+                meta={"object": obj.Name, "sep_deg": best, "minimum_when": minimum_when.isoformat(), "minimum_sep_deg": minimum_sep, "time_semantics": "observing", "city": city,
                       "object_mag": float(obj.mag), "messier": is_messier(obj.messier)},
             ))
     return _closest_per_night(out)

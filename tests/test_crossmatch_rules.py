@@ -46,16 +46,17 @@ def test_ngc_rule_is_stricter_than_messier():
 
 
 def test_body_near_bright_star_passes():
-    assert crossmatch.by_new_rules(12.5, "star", 6.5, False, 0.4)
+    assert crossmatch.by_new_rules(12.5, "star", 6.5, False, 0.1)
 
 
 def test_faint_star_does_not_trigger_the_rule():
-    assert not crossmatch.by_new_rules(12.5, "star", 7.5, False, 0.4)
+    assert not crossmatch.by_new_rules(12.5, "star", 7.5, False, 0.1)
 
 
-def test_star_rule_radius_is_one_degree():
+def test_star_rule_radius_is_ten_arcminutes():
     """Сначала порог был 0,5°, Станислав расширил его до градуса."""
-    assert crossmatch.by_new_rules(12.5, "star", 6.5, False, 0.9)
+    assert crossmatch.by_new_rules(12.5, "star", 6.5, False, 9.9 / 60)
+    assert not crossmatch.by_new_rules(12.5, "star", 6.5, False, 10 / 60)
     assert not crossmatch.by_new_rules(12.5, "star", 6.5, False, 1.2)
 
 
@@ -115,7 +116,7 @@ def test_asteroid_old_wide_rule_still_works():
     from astrocal.events.asteroids import interesting
 
     assert not crossmatch.by_new_rules(9.0, "star", 3.5, False, 2.0)
-    assert interesting({"mag": 9.0, "kind": "star", "object_mag": 3.5,
+    assert not interesting({"mag": 9.0, "kind": "star", "object_mag": 3.5,
                         "messier": False, "sep_deg": 2.0})
 
 

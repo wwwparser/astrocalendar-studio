@@ -374,12 +374,11 @@ def interesting(meta: dict) -> bool:
     # без известного блеска кометы новые правила не применимы: они все
     # опираются на него, и «неизвестно» не должно означать «достаточно ярко»
     comet_mag = meta.get("comet_mag", float("inf"))
+    if meta["kind"] == "star":
+        return crossmatch.by_new_rules(comet_mag, "star", mag, False, sep)
     if crossmatch.by_new_rules(comet_mag, meta["kind"], mag,
                                bool(meta.get("messier")), sep):
         return True
-    if meta["kind"] == "star":
-        # яркая звезда — интересно и на градусе, слабая — только при тесном проходе
-        return (mag <= 4.5 and sep <= 1.0) or (mag <= 6.5 and sep <= 0.5)
     return sep <= 1.0 and mag <= 11.5
 
 
@@ -390,6 +389,7 @@ def deduplicate(events: list[Event], hours: float = 12.0) -> list[Event]:
         clash = any(
             other.meta["comet"] == ev.meta["comet"]
             and other.meta["kind"] == ev.meta["kind"]
+            and other.meta.get("object") == ev.meta.get("object")
             and abs((other.when - ev.when).total_seconds()) < hours * 3600
             for other in kept)
         if not clash:

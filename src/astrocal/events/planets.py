@@ -174,7 +174,8 @@ def solar_configurations(start: dt.datetime, end: dt.datetime) -> list[Event]:
                 when=when,
                 text=(f"{RU_NOM[name]} ({planet_label(name, t)}) "
                       f"в наибольшей {'западной' if west else 'восточной'} элонгации "
-                      f"{e:.0f}° от Солнца, {'утренняя' if west else 'вечерняя'} видимость"),
+                      f"{e:.0f}° от Солнца, {'утренняя' if west else 'вечерняя'} видимость, "
+                      f"в созвездии {ru_constellation(constellation_at()(earth().at(t).observe(target).apparent()))}"),
                 category="planet",
                 computed=f"максимум элонгации: {e:.2f}°",
                 sources=["Skyfield/DE440s"],
@@ -439,4 +440,53 @@ def greatest_brilliancy(start: dt.datetime, end: dt.datetime) -> list[Event]:
 def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
     return (stations(start, end) + solar_configurations(start, end)
             + mutual_approaches(start, end) + star_approaches(start, end)
-            + greatest_brilliancy(start, end))
+            + greatest_brilliancy(start, end) + messier_approaches(start, end))
+
+
+def messier_approaches(start: dt.datetime, end: dt.datetime) -> list[Event]:
+    """Планеты в пределах одного градуса от центра объекта Мессье."""
+    from skyfield.api import Star
+    from ..catalogs import deep_sky, is_messier
+    from ..fmt import magnitude
+    from ..encounters import observing_time, direction_at
+
+    ts = timescale()
+    grid = ts_range(start - dt.timedelta(days=1), end + dt.timedelta(days=1), 60)
+    catalog = deep_sky()
+    catalog = catalog[catalog.messier.map(is_messier)]
+    events = []
+    for name in ALL:
+        target = body(name)
+        for _, obj in catalog.iterrows():
+            star = Star(ra_hours=float(obj.ra_degrees) / 15,
+                        dec_degrees=float(obj.dec_degrees))
+            sep = separation_deg(grid, target, star)
+            if np.min(sep) > 1.1:
+                continue
+            for index in local_minima(grid, sep):
+                tt = refine_minimum(lambda x: float(separation_deg(ts.tt_jd(x), target, star)),
+                                    grid[index - 1].tt, grid[index + 1].tt)
+                minimum = float(separation_deg(ts.tt_jd(tt), target, star))
+                when = to_msk(ts.tt_jd(tt))
+                if minimum >= 1 or not start <= when < end:
+                    continue
+                visible = observing_time(when, target, star, 1.0)
+                if visible is None:
+                    continue
+                t, site, city = visible
+                stamp = to_msk(t)
+                if not start <= stamp < end:
+                    continue
+                actual = float(site.at(t).observe(target).apparent().separation_from(
+                    site.at(t).observe(star).apparent()).degrees)
+                const = ru_constellation(constellation_at()(earth().at(t).observe(target).apparent()))
+                events.append(Event(
+                    when=stamp,
+                    text=f"{RU_NOM[name]} ({planet_label(name, t)}) проходит в {angle_deg(actual)} {direction_at(t, target, star, site)} {obj.type_gen} {obj.messier} ({magnitude(float(obj.mag))}) в созвездии {const}",
+                    category="planet", precision="minute",
+                    computed=f"Геоцентрический минимум {minimum:.4f}° в {when.isoformat()}; наблюдательное время для {city}",
+                    sources=["Skyfield/DE440s", "OpenNGC"],
+                    meta={"planet": name, "object": obj.Name, "messier": obj.messier,
+                          "sep_deg": actual, "time_semantics": "observing", "city": city},
+                ))
+    return events

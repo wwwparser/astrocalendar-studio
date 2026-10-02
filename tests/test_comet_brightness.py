@@ -199,7 +199,7 @@ def test_magnitude_note_admits_when_there_is_no_observation():
 
 
 def base_meta(**extra) -> dict:
-    meta = {"visible": True, "sep_deg": 0.3, "object_mag": 3.9, "kind": "star",
+    meta = {"visible": True, "sep_deg": 0.1, "comet_mag": 12.0, "object_mag": 3.9, "kind": "star",
             "magnitude_observed": True}
     meta.update(extra)
     return meta

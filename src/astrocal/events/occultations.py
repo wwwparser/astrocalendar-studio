@@ -336,6 +336,39 @@ def cluster_band(cluster: str, t_center):
     return merged
 
 
+def cluster_contacts(t_center):
+    """Локальные начала покрытий ярких членов Плеяд на двух площадках ЕЧР."""
+    from skyfield.api import Star
+    from ..catalogs import bright_stars
+    from ..core import observer, southern_observer, find_zero
+
+    ts = timescale()
+    grid = ts.tt_jd(np.linspace(t_center.tt - .25, t_center.tt + .25, 361))
+    catalog = bright_stars(mag_limit=6.5)
+    catalog = catalog[catalog.hip.isin(STAR_CLUSTERS)]
+    contacts = []
+    for city, site in (("Москва", observer()), ("Краснодар", southern_observer())):
+        moon_pos = site.at(grid).observe(body("moon")).apparent()
+        radius = np.degrees(np.arcsin(MOON_RADIUS_KM / moon_pos.distance().km))
+        for _, row in catalog.iterrows():
+            star = Star(ra_hours=float(row.ra_degrees) / 15, dec_degrees=float(row.dec_degrees))
+            star_pos = site.at(grid).observe(star).apparent()
+            gap = moon_pos.separation_from(star_pos).degrees - radius
+            for index in np.flatnonzero((gap[:-1] >= 0) & (gap[1:] < 0)):
+                def distance(tt):
+                    t = ts.tt_jd(tt)
+                    m = site.at(t).observe(body("moon")).apparent()
+                    return float(m.separation_from(site.at(t).observe(star).apparent()).degrees
+                                 - np.degrees(np.arcsin(MOON_RADIUS_KM / m.distance().km)))
+                t = ts.tt_jd(find_zero(distance, grid[index].tt, grid[index + 1].tt))
+                alt = float(site.at(t).observe(star).apparent().altaz()[0].degrees)
+                sun = float(site.at(t).observe(body("sun")).apparent().altaz()[0].degrees)
+                if alt > 0 and sun < -.5:
+                    contacts.append({"city": city, "hip": int(row.hip), "when": to_msk(t),
+                                     "altitude": alt, "sun_altitude": sun})
+    return sorted(contacts, key=lambda c: c["when"])
+
+
 def build_stars(start: dt.datetime, end: dt.datetime):
     """Покрытия ярких звёзд Луной с полосой видимости."""
     from .moon import illum_and_waxing
@@ -366,6 +399,10 @@ def build_stars(start: dt.datetime, end: dt.datetime):
         contact = occultation_start(band, lat, lon, ru)
         when = to_msk(contact) if contact is not None else cand["when"]
         moment = contact if contact is not None else cand["t"]
+        local_contacts = cluster_contacts(cand["t"]) if cluster else []
+        if local_contacts:
+            when = local_contacts[0]["when"]
+            moment = timescale().from_datetime(when)
         if not (start <= when < end):
             continue
 
@@ -380,9 +417,8 @@ def build_stars(start: dt.datetime, end: dt.datetime):
         daytime = daytime_over_russia(band, lat, lon, mask, ru)
 
         if cluster:
-            text = (f"Тесное соединение и покрытие звёздного скопления "
-                    f"{cluster} Луной ({moon_label(moment, frac, waxing)}) "
-                    f"в созвездии {const}, {where}")
+            text = (f"Покрытие северной части Плеяд Луной ({moon_label(moment, frac, waxing)}), "
+                    + ("видимое в Европейской части России" if local_contacts else where))
         else:
             label = (f"звезды {cand['name']}" if cand["name"]
                      else f"звезды HIP {cand['hip']}")
@@ -400,7 +436,8 @@ def build_stars(start: dt.datetime, end: dt.datetime):
                       f"({extent.get('points', 0)} узлов)"),
             sources=["Skyfield/DE440s", "Hipparcos", "геометрия покрытия на сетке ITRS"],
             precision="minute",
-            meta={"hip": cand["hip"], "band": extent},
+            meta={"hip": cand["hip"], "band": extent, "local_contacts": local_contacts,
+                  "time_semantics": "local_ingress" if local_contacts else "russia_grid_ingress"},
         ))
         report.append({"planet": f"HIP {cand['hip']}", "when": when,
                        "geo_sep": cand["geo_sep"], "ru": ru, "world": world,

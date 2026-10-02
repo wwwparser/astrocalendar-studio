@@ -10,6 +10,8 @@
 """
 from __future__ import annotations
 
+from ..fmt import MONTHS_GEN
+
 import datetime as dt
 
 import numpy as np
@@ -145,10 +147,10 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
                         f"пролётов {label} {where}")
                 precision = "minute"
             else:
-                text = (f"Период {'вечерней' if evening else 'утренней'} видимости "
+                text = (f"Начало периода {'вечерней' if evening else 'утренней'} видимости "
                         f"пролётов {label} {where}: "
                         f"{first_when:%d}–{last_when:%d} {MONTHS_GEN[start.month]}, "
-                        f"лучший пролёт {best[0]:%d} числа, "
+                        f"лучший пролёт {best[0]:%d} {MONTHS_GEN[best[0].month]}, "
                         f"высота до {best[1]:.0f}° ({site})")
                 precision = "hour"
 

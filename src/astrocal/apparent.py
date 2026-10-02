@@ -92,7 +92,10 @@ def planet_label(name: str, t, magnitude_value: float | None = None) -> str:
         # У Венеры в нижнем соединении освещено меньше процента диска:
         # «Ф=0,01» здесь неотличимо от «Ф=0,006», а разница — вдвое.
         digits = 3 if fraction < 0.05 else 2
-        parts.append(f"Ф={number(fraction, digits)}")
+        before = illuminated_fraction(name, timescale().tt_jd(t.tt - 0.5))
+        after = illuminated_fraction(name, timescale().tt_jd(t.tt + 0.5))
+        sign = "+" if after >= before else "-"
+        parts.append(f"Ф={sign}{number(fraction, digits)}")
     return ", ".join(parts)
 
 

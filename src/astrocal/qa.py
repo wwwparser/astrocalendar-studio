@@ -256,6 +256,8 @@ def run(events: list[Event], start: dt.datetime, end: dt.datetime,
         use_horizons: bool = True) -> dict:
     for event in events:
         event.flags = []
+        if event.meta.get("requires_review"):
+            _add(event, "REVIEW", "external_prediction", "Прогноз внешнего контрольного списка не подтверждён актуальным расчётом. Публикация запрещена до проверки.")
         check_format(event)
         check_timezone(event, start, end)
         check_moon_distance(event)

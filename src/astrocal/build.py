@@ -122,6 +122,11 @@ def collect(start: dt.datetime, end: dt.datetime) -> tuple[list[Event], dict]:
         trace.count(рассмотрено=len(extra["occultations"]))
         add("occultations", occ_events + star_occ_events)
 
+    with trace.stage("planetary_occultation_catalog", "Покрытия звёзд планетами: RMS Annex",
+                     "Контрольный каталог French & Souami 2023, 2023–2050. G/K не подменяются V; время сближения не равно локальному контакту."):
+        from .planetary_occultation_catalog import month_report
+        extra["planetary_occultation_catalog"] = month_report(start, end)
+
     with _step("eclipses"):
         eclipse_events, eclipse_report = eclipses.all_events(start, end)
         extra["eclipses"] = eclipse_report
@@ -362,6 +367,20 @@ def render_protocol(events: list[Event], extra: dict, year: int, month: int,
             lines.append("")
 
     lines += ["## 4. Кометы: отбор", ""]
+    catalog_report = extra.get("planetary_occultation_catalog")
+    if catalog_report:
+        lines += ["### Покрытия звёзд планетами и спутниками: контроль RMS Annex", "",
+                  f"Источник: {catalog_report['source']}",
+                  "Таблица 2023 года: время ближайшего сближения, не локальный контакт. "
+                  "Блеск G и K не равен визуальному V; автоматическая публикация по этим полям отключена.", ""]
+        for item in catalog_report["events"]:
+            lines.append(f"- {item['when'].isoformat()}: {item['target']}, Gaia {item['gaia_id']}, "
+                         f"G={item['g_mag']:.2f}, K={item['k_mag']:.2f}; {item['source_url']}")
+        for error in catalog_report["errors"]:
+            lines.append(f"- Источник {error['target']} недоступен: {error['error']}")
+        if not catalog_report["events"] and not catalog_report["errors"]:
+            lines.append("За этот месяц кандидатов в таблице нет.")
+        lines.append("")
     table = extra.get("comets_table")
     if table is not None and len(table):
         lines += ["| комета | минимальный расчётный блеск за месяц |", "|---|---|"]
@@ -546,7 +565,7 @@ def render_qa_report(events, published, extra, result, year, month) -> str:
 
     occ = extra.get("asteroid_occultations", [])
     if occ:
-        analysed = [r for r in occ if "candidate" in r and "error" not in r]
+        analysed = [r for r in occ if "candidate" in r and "axis_miss_km" in r]
         shifted = [r for r in analysed
                    if r.get("feed_shift_hours") and abs(r["feed_shift_hours"]) > 1]
         lines += ["## 9. Покрытия звёзд астероидами: расхождение с лентой", "",
@@ -561,10 +580,15 @@ def render_qa_report(events, published, extra, result, year, month) -> str:
             lines.append(
                 f"- ({candidate.asteroid_number}) {candidate.asteroid_name} × "
                 f"{candidate.star_id}: сдвиг "
-                f"{shift:+.1f} ч, ось тени в {record['axis_miss_km']:.0f} км от "
+                f"{shift or 0:+.1f} ч, ось тени в {record['axis_miss_km']:.0f} км от "
                 f"центра Земли, регионы: "
                 f"{', '.join(record['regions']) if record['regions'] else 'мимо России'}")
         lines.append("")
+
+    comparison = asteroid_occultations.compare_with_control(events, year, month)
+    if comparison["expected"]:
+        lines += ["### Контроль покрытий: Astrovert", "",
+                  asteroid_occultations.describe_comparison(comparison), ""]
 
     external, rows = absence_check(events, year, month)
     if rows:

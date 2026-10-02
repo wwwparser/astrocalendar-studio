@@ -95,9 +95,19 @@ def rank_event(event: Event) -> str:
     if category == "asteroid":
         if meta.get("distance_km"):                       # пролёт у Земли
             return "interesting" if meta.get("diameter_km", 0) >= 0.3 else "optional"
+        from .crossmatch import by_new_rules
+        if by_new_rules(meta.get("mag", 99), meta.get("kind", "star"),
+                        meta.get("object_mag", 99), meta.get("messier", False),
+                        meta.get("sep_deg", 99)):
+            return "interesting"
         return "optional"
 
     if category.startswith("comet"):
+        if meta.get("kind") == "star":
+            from .crossmatch import by_new_rules
+            return "interesting" if meta.get("visible") and meta.get("magnitude_observed") and by_new_rules(
+                meta.get("comet_mag", 99), "star", meta.get("object_mag", 99),
+                False, meta.get("sep_deg", 99)) else "optional"
         # яркая комета у яркого объекта заслуживает строки, слабая — нет
         comet_mag = meta.get("comet_mag")
         object_mag = meta.get("object_mag", 99)

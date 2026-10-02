@@ -15,20 +15,15 @@
 * рядом с прочими NGC/IC порог строже — +13,0ᵐ в пределах 1°: этих объектов
   тысячи, и без ограничения по блеску календарь заполнят проходы, которые
   никто не увидит;
-* рядом со звездой ярче +7,0ᵐ — +13,0ᵐ в пределах 1°: сначала порог был
-  вдвое строже, но Станислав его расширил — на градусе сближение ещё
-  укладывается в одно поле зрения искателя.
-
-Старые правила не выброшены, а объединены с новыми по «или». Они шире по
-расстоянию там, где объект очень яркий: астероид в 2° от звезды 4-й величины
-видно в один бинокль, и такую строку терять не хочется.
+* рядом со звездой до +7,0ᵐ — тело до +13,0ᵐ и расстояние строго меньше
+  10 угловых минут. Широкие прежние правила для звёзд больше не применяются.
 """
 from __future__ import annotations
 
 # Новые правила: (предел блеска малого тела, предел расстояния в градусах)
 MESSIER = (19.0, 1.0)
 NGC_IC = (13.0, 1.0)
-STAR = (13.0, 1.0)
+STAR = (13.0, 10.0 / 60.0)
 STAR_OBJECT_LIMIT = 7.0     # правило для звезды работает только для ярких звёзд
 
 
@@ -38,7 +33,7 @@ def by_new_rules(body_mag: float, kind: str, object_mag: float,
     if kind == "star":
         limit, radius = STAR
         return (object_mag <= STAR_OBJECT_LIMIT and body_mag <= limit
-                and sep_deg <= radius)
+                and sep_deg < radius)
     limit, radius = MESSIER if is_messier else NGC_IC
     return body_mag <= limit and sep_deg <= radius
 
@@ -49,7 +44,7 @@ def rule_name(body_mag: float, kind: str, object_mag: float,
     if by_new_rules(body_mag, kind, object_mag, is_messier, sep_deg):
         if kind == "star":
             return (f"звезда ярче {STAR_OBJECT_LIMIT:+.1f}ᵐ, тело ярче "
-                    f"{STAR[0]:+.1f}ᵐ, расстояние до {STAR[1]:.1f}°")
+                    f"{STAR[0]:+.1f}ᵐ, расстояние менее {STAR[1] * 60:.0f}′")
         if is_messier:
             return (f"объект Мессье, тело ярче {MESSIER[0]:+.1f}ᵐ, "
                     f"расстояние до {MESSIER[1]:.1f}°")

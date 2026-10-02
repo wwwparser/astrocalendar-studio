@@ -23,7 +23,7 @@ import numpy as np
 from .. import config as cfg
 from ..fmt import number
 from ..core import (Event, body, find_zero, observer, planets, southern_observer,
-                    timescale, to_msk, ts_range)
+                    timescale, to_msk, ts_range, refine_minimum)
 
 MOON_FRAME_FILES = {
     "frame": cfg.CACHE / "moon_080317.tf",
@@ -103,10 +103,10 @@ def libration(t) -> tuple[float, float]:
     frame = moon_frame()
     if frame is None:
         raise RuntimeError("нет ядра ориентации Луны")
-    position = planets()["moon"].at(t).observe(planets()["earth"]).apparent()
+    position = (planets()["earth"] - planets()["moon"]).at(t)
     lat, lon, _distance = position.frame_latlon(frame)
-    longitude = (-float(lon.degrees) + 180.0) % 360.0 - 180.0
-    latitude = (-float(lat.degrees) + 180.0) % 360.0 - 180.0
+    longitude = (float(lon.degrees) + 180.0) % 360.0 - 180.0
+    latitude = (float(lat.degrees) + 180.0) % 360.0 - 180.0
     return longitude, latitude
 
 
@@ -178,10 +178,10 @@ def clair_obscur(start: dt.datetime, end: dt.datetime) -> list[Event]:
 
 
 LIBRATION_DIRECTIONS = (
-    (0, +1, "восточный", "Море Краевое и Море Смита"),
-    (0, -1, "западный", "Море Восточное"),
-    (1, +1, "северный", "район кратера Пири"),
-    (1, -1, "южный", "район кратера Шеклтон"),
+    (0, +1, "восточный", "область Моря Краевого и Моря Смита"),
+    (0, -1, "западный", "область Моря Восточного"),
+    (1, +1, "северный", "область у кратера Пири"),
+    (1, -1, "южный", "область у кратера Шеклтон"),
 )
 
 
@@ -215,19 +215,26 @@ def librations(start: dt.datetime, end: dt.datetime) -> list[Event]:
         if not peaks:
             continue
         index = max(peaks, key=lambda position: series[position])
-        when = to_msk(grid[index])
+        ts = timescale()
+        tt = refine_minimum(lambda x: -libration(ts.tt_jd(x))[axis] * sign,
+                            grid[index - 1].tt, grid[index + 1].tt)
+        moment = ts.tt_jd(tt)
+        when = to_msk(moment)
         if not (start <= when < end):
             continue
         visible, altitude = _observable(when)
-        longitude_libration, latitude_libration = values[index]
+        longitude_libration, latitude_libration = libration(moment)
         axis_ru = "долготе" if axis == 0 else "широте"
+        from .moon import illum_and_waxing
+        from ..apparent import moon_label
+        frac, waxing = illum_and_waxing(moment)
         strong = series[index] >= STRONG_LIBRATION_DEG
         out.append(Event(
             when=when,
-            text=(f"{'Благоприятная либрация' if strong else 'Либрация'}: "
+            text=(f"Наибольшая {'восточная' if axis == 0 and sign > 0 else 'западная' if axis == 0 else 'северная' if sign > 0 else 'южная'} либрация Луны ({moon_label(moment, frac, waxing)}): "
                   f"открыт {edge} край лунного диска, либрация по {axis_ru} "
-                  f"{number(values[index][axis], 1, sign=True)}°, "
-                  f"видны {features}"),
+                  f"{number((longitude_libration, latitude_libration)[axis], 1, sign=True)}°, "
+                  f"видна {features}"),
             category="lunar_feature",
             confidence="высокая",
             # все четыре максимума идут в выпуск: читателю нужна полная
