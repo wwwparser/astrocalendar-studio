@@ -143,8 +143,11 @@ def all_events(start: dt.datetime, end: dt.datetime) -> list[Event]:
             evening = 12 <= first_when.hour < 24
             best = max(group, key=lambda item: item[1])
             if age_days <= EXACT_TIME_MAX_AGE_DAYS:
-                text = (f"Начало {'вечерней' if evening else 'утренней'} видимости "
-                        f"пролётов {label} {where}")
+                text = (f"Начало периода {'вечерней' if evening else 'утренней'} видимости "
+                        f"пролётов {label} {where}: "
+                        f"{first_when:%d}–{last_when:%d} {MONTHS_GEN[start.month]}, "
+                        f"лучший пролёт {best[0]:%d} {MONTHS_GEN[best[0].month]}, "
+                        f"высота до {best[1]:.0f}° ({site})")
                 precision = "minute"
             else:
                 text = (f"Начало периода {'вечерней' if evening else 'утренней'} видимости "
