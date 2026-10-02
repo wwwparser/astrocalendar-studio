@@ -163,6 +163,8 @@ def write_outputs(issue: Issue, directory=None) -> dict:
         "qa": target / f"QA_REPORT_{stem}.md",
     }
     files["calendar"].write_text(publication(issue).plain_text, encoding="utf-8")
+    from .revisions import archive_calendar
+    archive_calendar(files["calendar"])
     files["protocol"].write_text(protocol_text(issue), encoding="utf-8")
     files["qa"].write_text(qa_report_text(issue), encoding="utf-8")
     return files

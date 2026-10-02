@@ -8,6 +8,7 @@ from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication
 
 from . import theme
+from . import __version__
 from .main_window import APPLICATION, ORGANISATION, MainWindow
 
 
@@ -23,6 +24,7 @@ def create_application(argv: list[str] | None = None) -> QApplication:
     application = QApplication(argv if argv is not None else sys.argv)
     application.setOrganizationName(ORGANISATION)
     application.setApplicationName(APPLICATION)
+    application.setApplicationVersion(__version__)
     application.setWindowIcon(QIcon())
     # Явный шрифт: у Qt на Windows подбор по умолчанию иногда даёт гарнитуру
     # без кириллицы, и интерфейс превращается в квадраты

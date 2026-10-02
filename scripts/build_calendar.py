@@ -70,6 +70,9 @@ def main(argv: list[str]) -> int:
 
     out_post.write_text(render_post(published, year, month, icons=icons), encoding="utf-8")
     out_md.write_text(render_markdown(published, year, month), encoding="utf-8")
+    from astrocal_app.revisions import archive_calendar
+    archive_calendar(out_post)
+    archive_calendar(out_md)
     out_protocol.write_text(render_protocol(events, extra, year, month, checks),
                             encoding="utf-8")
     out_qa.write_text(render_qa_report(events, published, extra, result, year, month),
