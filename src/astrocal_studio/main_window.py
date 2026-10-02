@@ -639,13 +639,17 @@ class MainWindow(QMainWindow):
                                               "Текст (*.txt)")
             if path:
                 Path(path).write_text(service.publication(self.issue).plain_text,
-                                      encoding="utf-8")
+                                       encoding="utf-8")
+                from astrocal_app.revisions import archive_calendar
+                archive_calendar(Path(path))
         elif kind == "md":
             path = self.preview.ask_save_path(str(cfg.OUT / f"{stem}.md"),
                                               "Markdown (*.md)")
             if path:
                 Path(path).write_text(service.publication_markdown(self.issue),
-                                      encoding="utf-8")
+                                       encoding="utf-8")
+                from astrocal_app.revisions import archive_calendar
+                archive_calendar(Path(path))
         else:
             import json
             path = self.preview.ask_save_path(str(cfg.OUT / f"{stem}.json"),
